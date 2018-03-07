@@ -173,7 +173,7 @@ frozen=False then you should supply parameters later, when you call the pdf func
         """
         # Validate the supplied parameters (if any)
         parameters = self.check_parameters(parameters)
-        print("parameters:",parameters)
+        #print("parameters:",parameters)
         # Use first submodel to determine pdf array output shape
         if self.submodel_logpdf_replacements[0]!=None:
             _pdf = np.exp(self.submodel_logpdf_replacements[0](x[0],**parameters[0]))
@@ -181,7 +181,7 @@ frozen=False then you should supply parameters later, when you call the pdf func
             _pdf = self.submodel_pdf(0,x[0],parameters[0])
         # Loop over rest of the submodels
         for i,(xi,submodel,alt_logpdf,pars) in enumerate(zip(x[1:],self.submodels[1:],self.submodel_logpdf_replacements[1:],parameters[1:])):
-            print(pars)
+            #print(pars)
             if alt_logpdf!=None:
                 _pdf *= np.exp(alt_logpdf(xi,**pars))
             else:
@@ -200,7 +200,7 @@ frozen=False then you should supply parameters later, when you call the pdf func
             _logpdf = self.submodel_logpdf(0,x[0],parameters[0])
         # Loop over rest of the submodels
         for i,(xi,submodel,alt_logpdf,pars) in enumerate(zip(x[1:],self.submodels[1:],self.submodel_logpdf_replacements[1:],parameters[1:])):
-            print(pars)
+            #print(pars)
             if alt_logpdf!=None:
                 _logpdf += alt_logpdf(xi,**pars)
             else:

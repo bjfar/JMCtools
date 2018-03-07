@@ -152,8 +152,7 @@ class Block:
         return args       
  
     def logpdf(self,x,parameters):
-        args = get_pdf_args(parameters)
-        return jointmodel.logpdf(x,**args)
+        return self.jointmodel.logpdf(x,self.get_pdf_args(parameters))
 
 
 class ParameterModel:     
@@ -234,7 +233,14 @@ class ParameterModel:
             pdict = {p: parameters[p] for p in deps} # extract just the parameters that this parf needs
             args += [parf(**pdict)]
         return args
- 
+
+    def logpdf(self,parameters,x=None):
+        if x==None:
+           x = self.x # Use pre-generated data if none provided
+        else:
+           validate_data(x)
+        return self.model.logpdf(x,self.get_pdf_args(parameters))
+
     def find_submodels_which_depend_on(self,parameter):
         """Return the indices of the submodels which depend on 'parameter'"""
         matches = set([])
@@ -262,8 +268,9 @@ class ParameterModel:
            args = self.get_pdf_args(null_parameters)
         else:
            args = {}
-        print('args:',args)
         self.x = self.model.rvs(N,args)  
+        # Might as well return the data as well
+        return self.x 
 
     def find_MLE(self,options,x=None):
         """Find the global maximum likelihood estimate of the model parameters,
@@ -284,10 +291,15 @@ class ParameterModel:
         else:
            validate_data(x)
 
+        Lmax_tot = 0 # output maximum log-likelihood
+        MLE_pars_full = {}
         for block in self.blocks:
            block_x = [x[i] for i in block.submodels] # Select data relevant to this submodel
-           MLE_pars = find_MLE_for_block(block,options,block_x)
+           Lmax, MLE_pars = self.find_MLE_for_block(block,options,block_x)
+           Lmax_tot += Lmax
+           MLE_pars_full.update(MLE_pars)
 
+        return Lmax_tot, MLE_pars_full
 
     def find_MLE_for_block(self,block,options,block_x=None):
         """Find MLE for a single block of parameters
@@ -308,36 +320,48 @@ class ParameterModel:
         ranges = options["ranges"]
         p1d = []
         for par in block.deps:
-           p1d = [ np.linspace(*ranges[par],N) ]
+           p1d += [ np.linspace(*ranges[par],N) ]
         PARS = np.meshgrid(*p1d)
-        pdict = {}
+        parameters = {}
         for i,par in enumerate(block.deps):
-           pdict[par] = PARS[i]
+           parameters[par] = PARS[i][...,np.newaxis] # Add new axis to broadcast against data
 
-        block_logpdf = block.logpdf(block_x,parameters[...,np.newaxis])
+        block_logpdf = block.logpdf(block_x,parameters)
 
-        print(block_logpdf.shape)
+        # Maximise over all dimensions except the data dimension
 
+        # Use this to check result of reshape/indexing manipulations
+        #print("flatten axes:",tuple(range(len(block.deps))))
+        Lmax_simple = np.max(block_logpdf,axis=tuple(range(len(block.deps))))
 
-        # Do the mapping from parameter space to the arguments of
-        # each submodel of the jointmodel 
-#        submodel_args = [
-#
-#        # Do minimization on the above grid
-#        H1_chi2_min = np.min(block.jointmodel.logpdf(block_x,
-#
-#    H1_chi2_min = np.min(gauss(data[0][:,np.newaxis],mu[np.newaxis,:],scales[0]),axis=-1) # profile out mu_x parameter
-#
-#    for x,s in zip(data[1:],scales[1:]):
-#        H1_chi2_min += np.min(halfgauss(x[:,np.newaxis],mu[np.newaxis,:],s),axis=-1) # profile out each half-gaussian parameter
-   
+        # During reshape; keep size of last dimension, 'flatten' the rest, then maximise over the flattened part
+        # No idea if the ordering is correctly presevered here...
+        #max_idx = np.swapaxes(block_logpdf,0,-1).reshape((block_logpdf.shape[-1],-1)).argmax(-1)
+        flatview = block_logpdf.reshape((-1,block_logpdf.shape[-1]))
+        max_idx = flatview.argmax(axis=0)
+        #print("PARS[0].shape, block_x[0].shape:", PARS[0].shape, block_x[0].shape)
+        #print("max_idx.shape:", max_idx.shape)        
+        #print("max_idx:", max_idx)
 
+        # Get unravel indices corresponding to original shape of A
+        #maxpos_vect = np.column_stack(np.unravel_index(max_idx, np.swapaxes(block_logpdf,0,-1).shape[1:]))
+        maxpos_vect = np.column_stack(np.unravel_index(max_idx, block_logpdf.shape[:-1]))
+        #print("maxpos_vect.shape:",maxpos_vect.shape)
+        #print("maxpos_vect:",maxpos_vect)
 
+        Lmax = flatview[max_idx,range(len(max_idx))]
+        #print("out shapes:",Lmax_simple.shape, flatview.shape, max_idx.shape, Lmax.shape)
+        #print("agreement?", np.array_equal(Lmax_simple,Lmax))
 
-       # Actually rather than interpolate, let's just find the minima for now
-#        H1_chi2_min = np.min(np.min(H1_chi2_all,axis=0),axis=0)
+        H1_chi2_min = -2*Lmax
 
+        # Get parameter values of the maximum
+        pmax = {}
+        for i,par in enumerate(block.deps):
+            pmax[par] = p1d[i][maxpos_vect[:,i]]
+            #print("parmax {0} shape: {1}".format(par,pmax[par].shape))
 
+        return Lmax, pmax
         
 # Test ParameterModel constructor
 
@@ -349,14 +373,27 @@ parmodel = ParameterModel(model1,[pars1])
 
 
 model2 = jtd.JointModel([sps.norm,sps.norm,sps.norm])
-def pars2_A(mu1,mu2):
-    return {"loc":mu1+mu2, "scale":1}
 
-def pars2_B(mu2,mu3):
-    return {"loc":mu2+mu3, "scale":1}
+# Freaky inter-dependent model that probably screws with Wilk's theorem regularity conditions
+#def pars2_A(mu1,mu2):
+#    return {"loc":mu1+mu2, "scale":1}
+#
+#def pars2_B(mu2,mu3):
+#    return {"loc":mu2+mu3, "scale":1}
+#
+#def pars2_C(mu4):
+#    return {"loc":mu4, "scale":1}
 
-def pars2_C(mu4):
-    return {"loc":mu4, "scale":1}
+# Simple model for testhing
+def pars2_A(mu1):
+    return {"loc":mu1, "scale":1}
+
+def pars2_B(mu2):
+    return {"loc":mu2, "scale":1}
+
+def pars2_C(mu3):
+    return {"loc":mu3, "scale":1}
+
 
 # Can infer parameter dependencies of blocks from this list of functions
 parfs = [pars2_A, pars2_B, pars2_C]
@@ -364,8 +401,39 @@ parfs = [pars2_A, pars2_B, pars2_C]
 parmodel2 = ParameterModel(model2,parfs)
 
 null_parameters = {'mu1':0, 'mu2':0, 'mu3':0, 'mu4':0}
-parmodel2.simulate(100,null_parameters)
-        
+
+# Get some test data (will be stored internally)
+parmodel2.simulate(100000,null_parameters)
+
+# Set ranges for parameter "scan"
+ranges = {}
+for p in null_parameters.keys():
+   ranges[p] = (-5,5)        
+
+options = {"ranges": ranges, "N": 20}
+
+Lmax, pmax = parmodel2.find_MLE(options)
+
+print("results:", Lmax.shape, [p.shape for p in pmax.values()])
+
+# Alright, see if this is working; plot simple MLLR test statistic
+Lnull = parmodel2.logpdf(null_parameters)
+
+MLLR = -2*(Lnull - Lmax)
+
+n, bins = np.histogram(MLLR, bins=30, normed=True)
+q = np.arange(0,10,0.01)
+fig= plt.figure()
+ax = fig.add_subplot(111)
+ax.plot(bins[:-1],n,drawstyle='steps-post',label="T")
+ax.plot(q,sps.chi2.pdf(q, 3),c='k')
+ax.set_xlabel("MLLR")
+ax.set_ylabel("pdf(MLLR)")
+ax.set_ylim(0,1)
+plt.show()
+
+# Woot! Seems to be working!
+
 quit()
 
 # Now, we need the test statistic values under all the values of mu_deltaT 
