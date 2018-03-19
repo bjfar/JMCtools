@@ -384,7 +384,7 @@ model2 = jtd.JointModel([sps.norm,sps.norm,sps.norm])
 #def pars2_C(mu4):
 #    return {"loc":mu4, "scale":1}
 
-# Simple model for testhing
+# Simple model for testing
 def pars2_A(mu1):
     return {"loc":mu1, "scale":1}
 
@@ -421,15 +421,15 @@ Lnull = parmodel2.logpdf(null_parameters)
 
 MLLR = -2*(Lnull - Lmax)
 
-n, bins = np.histogram(MLLR, bins=30, normed=True)
-q = np.arange(0,10,0.01)
+n, bins = np.histogram(MLLR, bins=50, normed=True)
+q = np.arange(0,15,0.01)
 fig= plt.figure()
 ax = fig.add_subplot(111)
 ax.plot(bins[:-1],n,drawstyle='steps-post',label="T")
 ax.plot(q,sps.chi2.pdf(q, 3),c='k')
 ax.set_xlabel("MLLR")
 ax.set_ylabel("pdf(MLLR)")
-ax.set_ylim(0,1)
+#ax.set_ylim(0,1)
 plt.show()
 
 # Woot! Seems to be working!
