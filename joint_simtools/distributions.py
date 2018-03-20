@@ -87,6 +87,7 @@ class MixtureModel(ListModel):
         return np.log(self.pdf(*args,**kwargs)) # No better way to do this for mixture model
 
     def rvs(self, size, weights=None, submodel_parameters=None):
+        #print('MixtureModel.rvs: ', weights, submodel_parameters)
         self._check_parameters(submodel_parameters)
         weights = self._check_parameters(weights)
         if weights==None:
@@ -94,7 +95,7 @@ class MixtureModel(ListModel):
         if submodel_parameters==None:
             submodel_parameters = [{} for i in range(len(self.submodels))]
         submodel_choices = np.random.choice(range(len(self.submodels)), p=weights, size=size)
-        submodel_samples = [submodel.rvs(size=size) for submodel in self.submodels]
+        submodel_samples = [submodel.rvs(size=size,**pars) for submodel,pars in zip(self.submodels,submodel_parameters)]
         _rvs = np.choose(submodel_choices, submodel_samples)
         return _rvs
     
@@ -288,6 +289,7 @@ class JointModel(ListModel):
         of random variables in the joint PDF. Each element will be an array of shape
         'size', possibly with extra dimensions if submodel is multivariate. That is, each variable is drawn
         with 'size', and the results are joined into a list."""
+        #print("in rvs:", submodel_parameters)
         if self.frozen:
             submodel_parameters = [{} for i in range(len(self.submodels))]
         else:   
