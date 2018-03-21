@@ -261,18 +261,21 @@ class JointModel(ListModel):
                 if self.submodel_logpdf_replacements[i]==None:
                     submodel_parameters[i] = {}
 
+        #print("JointModel.logpdf: x = ",x)
+        #print("len(self.submodels):",len(self.submodels))
         # Use first submodel to determine pdf array output shape
         if self.submodel_logpdf_replacements[0]!=None:
             _logpdf = self.submodel_logpdf_replacements[0](x[0],**submodel_parameters[0])
         else:
             _logpdf = self.submodel_logpdf(0,x[0],submodel_parameters[0])
         # Loop over rest of the submodels
-        for i,(xi,submodel,alt_logpdf,pars) in enumerate(zip(x[1:],self.submodels[1:],self.submodel_logpdf_replacements[1:],submodel_parameters[1:])):
-            #print(pars)
-            if alt_logpdf!=None:
-                _logpdf += alt_logpdf(xi,**pars)
-            else:
-                _logpdf += self.submodel_logpdf(i+1,xi,pars)
+        if len(self.submodels)>1:
+            for i,(xi,submodel,alt_logpdf,pars) in enumerate(zip(x[1:],self.submodels[1:],self.submodel_logpdf_replacements[1:],submodel_parameters[1:])):
+                #print(pars)
+                if alt_logpdf!=None:
+                    _logpdf += alt_logpdf(xi,**pars)
+                else:
+                    _logpdf += self.submodel_logpdf(i+1,xi,pars)
         return _logpdf
     
     def set_submodel_logpdf(self, i, f):
