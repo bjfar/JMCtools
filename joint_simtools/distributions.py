@@ -5,6 +5,7 @@ import scipy.stats as sps
 from scipy.stats import rv_continuous
 import scipy.optimize as spo
 from scipy.integrate import quad
+import joint_simtools.common as c
 
 class ListModel:
     """
@@ -68,6 +69,7 @@ class MixtureModel(ListModel):
     def pdf(self, x, weights=None, submodel_parameters=None):
         self._check_parameters(submodel_parameters)
         weights = self._check_parameters(weights)
+
         if weights==None:
             raise ValueError("No mixing weights supplied!")
         if submodel_parameters==None:
@@ -94,9 +96,25 @@ class MixtureModel(ListModel):
             raise ValueError("No mixing weights supplied!")
         if submodel_parameters==None:
             submodel_parameters = [{} for i in range(len(self.submodels))]
+        #print("weights:", weights, ", size:", size)
         submodel_choices = np.random.choice(range(len(self.submodels)), p=weights, size=size)
         submodel_samples = [submodel.rvs(size=size,**pars) for submodel,pars in zip(self.submodels,submodel_parameters)]
+
         _rvs = np.choose(submodel_choices, submodel_samples)
+        # ahh crap, need to apply this in a more fancy way due to possible crazy nested structure of submodel_samples
+        # So, we are choosing elements from the top level list
+        # In other words, we have multiple crazy nested list structures, and we want to decend them and pull out the
+        # correct elements, and mix them back together. I think better off masking the bottom level arrays, and then
+        # "adding" them. I think the nested structures must match or else the mixture model wouldn't make sense. Need
+        # to be unable to tell which mixture submodel the sample came from, so they must have identical structure.
+        def mask_chosen(A,choices,i):
+           return A * (choices==i) # Non-zero only in selected elements
+        #print("submodel_choices.shape:", submodel_choices.shape)
+        submodel_selections = [ list(c.apply_f(lambda A: A * (submodel_choices==i), submodel_rvs)) for i,submodel_rvs in enumerate(submodel_samples) ]
+        #print("submodel_selections:", submodel_selections)
+        _rvs = list(c.apply_f(lambda *arrays: sum(arrays), *submodel_selections))
+        #print("_rvs:", _rvs) 
+        #print("Mixture rvs output:", c.get_data_structure(_rvs))
         return _rvs
     
 class PowerMixtureModel(rv_continuous):
@@ -260,8 +278,8 @@ class JointModel(ListModel):
             for i in range(len(self.submodels)):
                 if self.submodel_logpdf_replacements[i]==None:
                     submodel_parameters[i] = {}
-
         #print("JointModel.logpdf: x = ",x)
+        #print("JointModel.logpdf: structure(x) = ", c.get_data_structure(x))
         #print("len(self.submodels):",len(self.submodels))
         # Use first submodel to determine pdf array output shape
         if self.submodel_logpdf_replacements[0]!=None:
@@ -285,7 +303,7 @@ class JointModel(ListModel):
     def set_logpdf(self, listf):
         """Replace the logpdf for all submodels (use 'None' for elements where
         you want to keep the original pdf"""
-        self.submodel_logpdf_replacements = f
+        self.submodel_logpdf_replacements = listf
 
     def rvs(self, size, submodel_parameters=None):
         """Output will be a list of length N, where N is the number
@@ -297,5 +315,5 @@ class JointModel(ListModel):
             submodel_parameters = [{} for i in range(len(self.submodels))]
         else:   
             submodel_parameters = self._check_parameters(submodel_parameters)
-        submodel_samples = [submodel.rvs(size=size,**pars) for submodel, pars in zip(self.submodels,submodel_parameters)]
-        return submodel_samples
+        _rvs = [submodel.rvs(size=size,**pars) for submodel, pars in zip(self.submodels,submodel_parameters)]
+        return _rvs
