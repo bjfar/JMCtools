@@ -22,6 +22,7 @@ functions that are built piecemeal from scipy.stats distribution objects
    examples/MixtureModel
    examples/ParameterModel
    examples/fitting
+   JMCtools
 
 Indices and tables
 ==================

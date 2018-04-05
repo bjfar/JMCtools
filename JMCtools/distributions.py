@@ -252,15 +252,15 @@ class JointModel(ListModel):
            should be an empty dictionary.
         """
         # Validate the supplied parameters (if any)
-        submodel_parameters = self._check_parameters(submodel_parameters)
+        parameters = self._check_parameters(parameters)
         #print("parameters:",parameters)
         # Use first submodel to determine pdf array output shape
         if self.submodel_logpdf_replacements[0]!=None:
-            _pdf = np.exp(self.submodel_logpdf_replacements[0](x[0],**submodel_parameters[0]))
+            _pdf = np.exp(self.submodel_logpdf_replacements[0](x[0],**parameters[0]))
         else:
-            _pdf = self.submodel_pdf(0,x[0],submodel_parameters[0])
+            _pdf = self.submodel_pdf(0,x[0],parameters[0])
         # Loop over rest of the submodels
-        for i,(xi,submodel,alt_logpdf,pars) in enumerate(zip(x[1:],self.submodels[1:],self.submodel_logpdf_replacements[1:],submodel_parameters[1:])):
+        for i,(xi,submodel,alt_logpdf,pars) in enumerate(zip(x[1:],self.submodels[1:],self.submodel_logpdf_replacements[1:],parameters[1:])):
             #print(pars)
             if alt_logpdf!=None:
                 _pdf *= np.exp(alt_logpdf(xi,**pars))
@@ -268,27 +268,27 @@ class JointModel(ListModel):
                 _pdf *= self.submodel_pdf(i+1,xi,pars)
         return _pdf
     
-    def logpdf(self, x, submodel_parameters=None):
+    def logpdf(self, x, parameters=None):
         """As above but for logpdf
         """
-        submodel_parameters = self._check_parameters(submodel_parameters)
+        parameters = self._check_parameters(parameters)
     
         # If pdf is frozen, need to 'mute' parameters for submodels whose pdf's have not been replaced by analytic expressions 
         if self.frozen:
             for i in range(len(self.submodels)):
                 if self.submodel_logpdf_replacements[i]==None:
-                    submodel_parameters[i] = {}
+                    parameters[i] = {}
         #print("JointModel.logpdf: x = ",x)
         #print("JointModel.logpdf: structure(x) = ", c.get_data_structure(x))
         #print("len(self.submodels):",len(self.submodels))
         # Use first submodel to determine pdf array output shape
         if self.submodel_logpdf_replacements[0]!=None:
-            _logpdf = self.submodel_logpdf_replacements[0](x[0],**submodel_parameters[0])
+            _logpdf = self.submodel_logpdf_replacements[0](x[0],**parameters[0])
         else:
-            _logpdf = self.submodel_logpdf(0,x[0],submodel_parameters[0])
+            _logpdf = self.submodel_logpdf(0,x[0],parameters[0])
         # Loop over rest of the submodels
         if len(self.submodels)>1:
-            for i,(xi,submodel,alt_logpdf,pars) in enumerate(zip(x[1:],self.submodels[1:],self.submodel_logpdf_replacements[1:],submodel_parameters[1:])):
+            for i,(xi,submodel,alt_logpdf,pars) in enumerate(zip(x[1:],self.submodels[1:],self.submodel_logpdf_replacements[1:],parameters[1:])):
                 #print(pars)
                 if alt_logpdf!=None:
                     _logpdf += alt_logpdf(xi,**pars)
