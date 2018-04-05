@@ -160,3 +160,8 @@ texinfo_documents = [
 
 
 # -- Extension configuration -------------------------------------------------
+
+extensions = [
+    'sphinx.ext.viewcode',
+    'sphinx.ext.autodoc',
+]
