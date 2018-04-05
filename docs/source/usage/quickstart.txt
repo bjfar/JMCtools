@@ -1,0 +1,79 @@
+Quick start
+============
+
+The principle pipeline which JMCtools is designed to streamline is
+the following:
+
+1. :ref:`combine_into_joint`
+2. :ref:`sample_from_joint`
+3. :ref:`build_model`  
+4. :ref:`find_MLEs` for these parameters (for many
+   samples/trials, in parallel)
+5. :ref:`build_test_stats` 
+
+A fast introduction to the package, then, is to see an example of this in action. So let's get to it!
+
+.. _combine_into_joint:
+
+Combine independent distribution functions into a joint distribution
+--------------------------------------------------------------------
+
+.. _scipy_stats: https://docs.scipy.org/doc/scipy/reference/stats.html
+
+Suppose we have several independent random variables, which can each
+be modelled by an object from `scipy_stats`_. JMCtools provides the 
+:py:class:`.JointModel` class for the purpose of packaging these
+variables together into one single distribution-function-like object,
+which has similar (although not identical) behaviour and function to
+the native scipy.stats objects.
+
+For example, we can create the joint PDF for two normal random variables
+as follows:
+
+.. literalinclude:: /../../tests/docs_examples/quickstart.py
+   :start-after: make_joint
+   :end-before: sample_pdf
+
+.. _sample_from_joint:
+
+Sample from the joint distribution
+----------------------------------
+
+Now that we have an object describing our joint PDF, we can sample
+from it in a scipy.stats manner:
+
+.. literalinclude:: /../../tests/docs_examples/quickstart.py
+   :start-after: sample_pdf
+   :end-before: check_pdf
+
+We can also evaluate the joint PDF, and compare it to our samples to
+check that they seem reasonable:
+
+.. literalinclude:: /../../tests/docs_examples/quickstart.py
+   :start-after: check_pdf
+   :end-before: build_model
+
+.. figure:: /../../tests/docs_examples/example_2D_joint.svg
+   :scale: 50%
+   :alt: pdf_VS_samples
+
+   Contours of the PDF of the joint distribution, with samples overlayed.
+
+.. _build_model:
+
+Build relationships between model parameters and distribution parameters
+------------------------------------------------------------------------
+
+Construct relationships between abstract model parameters and the
+   parameters of the distribution functions
+
+.. _find_MLEs:
+
+Find maximum likelihood estimators
+----------------------------------
+
+.. _build_test_stats:
+
+Construct test statistics
+-------------------------
+

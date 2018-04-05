@@ -1,0 +1,38 @@
+JMCtools package
+================
+
+Submodules
+----------
+
+JMCtools.common module
+----------------------
+
+.. automodule:: JMCtools.common
+    :members:
+    :undoc-members:
+    :show-inheritance:
+
+JMCtools.distributions module
+-----------------------------
+
+.. automodule:: JMCtools.distributions
+    :members:
+    :undoc-members:
+    :show-inheritance:
+
+JMCtools.models module
+----------------------
+
+.. automodule:: JMCtools.models
+    :members:
+    :undoc-members:
+    :show-inheritance:
+
+
+Module contents
+---------------
+
+.. automodule:: JMCtools
+    :members:
+    :undoc-members:
+    :show-inheritance:
