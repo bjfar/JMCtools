@@ -7,11 +7,11 @@ if __name__ == '__main__':
         import os
         sys.path.append( os.path.dirname( os.path.dirname( os.path.abspath(__file__) ) ) )
         sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-        import joint_simtools as jt
-        import joint_simtools.distributions as jtd
+        import JMCtools as jt
+        import JMCtools.distributions as jtd
     else:
-        import joint_simtools as jt
-        import joint_simtools.distributions as jtd
+        import JMCtools as jt
+        import JMCtools.distributions as jtd
  
 import scipy.stats as sps
 import matplotlib.pyplot as plt
