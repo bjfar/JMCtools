@@ -24,6 +24,15 @@ functions that are built piecemeal from scipy.stats distribution objects
    examples/fitting
    JMCtools
 
+.. _ROOT: https://root.cern.ch/
+
+These tools are fairly simple wrappers of scipy.stats objects, made
+for convenience rather than speed. Effort has been taken to make them
+pretty efficient, but if you use them to construct and analyse monstrously large
+joint PDFs then things will not be fast. For such intense usage you
+will need a more specialised (and more complicated!) toolkit, such as 
+`ROOT`_.
+
 Indices and tables
 ==================
 
