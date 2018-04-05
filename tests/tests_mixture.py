@@ -33,7 +33,7 @@ eta = 0.8
 w=[eta, 1-eta]
 pars=[{'loc':3,'scale':1},{'loc':5,'scale':2}]
 x = np.linspace(0,10,100)
-p = mix.pdf(x,weights=w,submodel_parameters=pars)
+p = mix.pdf(x,weights=w,parameters=pars)
 
 fig= plt.figure()
 ax = fig.add_subplot(111)
@@ -51,15 +51,15 @@ w=[eta, 1-eta]
 # Sub-models are JointModels, so those each require a list of dictionaries as parameters
 # But MixtureModel also takes a list of dictionaries to pass to each sub-model, so there are
 # two layers of lists of dictionaries here.
-pars=[{'submodel_parameters':[{'loc':2,'scale':1.5},{'loc':5,'scale':2}]},
-      {'submodel_parameters':[{'loc':1,'scale':1},{'loc':5.5,'scale':1}]}]
+pars=[{'parameters':[{'loc':2,'scale':1.5},{'loc':5,'scale':2}]},
+      {'parameters':[{'loc':1,'scale':1},{'loc':5.5,'scale':1}]}]
 nxbins=100
 nybins=100
 x = np.linspace(-3,13,nxbins)
 y = np.linspace(-3,13,nybins)
 X, Y = np.meshgrid(x, y)
 # Let's also sample from this distribution. Easier to freeze it first.
-mix_frozen = mix(weights=w,submodel_parameters=pars)
+mix_frozen = mix(weights=w,parameters=pars)
 
 dxdy = (x[1]-x[0]) * (y[1]-y[0])
 PDF = mix_frozen.pdf([X,Y]) * dxdy # add in bin weights
@@ -85,9 +85,9 @@ fig.savefig("mix_test_2_pdf.png")
 # mixed have a nice block-diagonal structure, the mixture does not.
 def pars(eta,locx):
    weights=[1-eta,eta]
-   pars=[{'submodel_parameters':[{'loc':locx,'scale':1.5},{'loc':5,'scale':2}]},
-         {'submodel_parameters':[{'loc':1,'scale':1},{'loc':5.5,'scale':1}]}]
-   return {'weights': weights, 'submodel_parameters': pars}
+   pars=[{'parameters':[{'loc':locx,'scale':1.5},{'loc':5,'scale':2}]},
+         {'parameters':[{'loc':1,'scale':1},{'loc':5.5,'scale':1}]}]
+   return {'weights': weights, 'parameters': pars}
 
 # Need to put the mixture model into a trival JointModel in order to use it with ParameterModel
 # Will need to have a bunch of samples from the mixture distribution for asymptotic formulae to work
@@ -95,9 +95,9 @@ def pars(eta,locx):
 
 def pars(eta,locx):
    weights=[1-eta,eta]
-   pars=[{'submodel_parameters':[{'loc':locx,'scale':1.5},{'loc':5,'scale':2}]},
-         {'submodel_parameters':[{'loc':1,'scale':1},{'loc':5.5,'scale':1}]}]
-   return {'weights': weights, 'submodel_parameters': pars}
+   pars=[{'parameters':[{'loc':locx,'scale':1.5},{'loc':5,'scale':2}]},
+         {'parameters':[{'loc':1,'scale':1},{'loc':5.5,'scale':1}]}]
+   return {'weights': weights, 'parameters': pars}
 
 # Put it in a JointModel so we can make a ParameterModel out of it
 mixj = jtd.JointModel([mix,mix])

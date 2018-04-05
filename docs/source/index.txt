@@ -10,7 +10,7 @@ Python tools for perfoming Monte-Carlo studies of joint distribution
 functions that are built piecemeal from scipy.stats distribution objects
 (or any objects that 'quack' like them).
 
-.. image:: mixture_MLLR.svg
+.. image:: /../../tests/docs_examples/mixture_MLLR.svg
 
 .. toctree::
    :maxdepth: 2

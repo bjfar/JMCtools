@@ -34,9 +34,9 @@ mix = jtd.MixtureModel([jtd.JointModel([sps.norm,sps.norm]),
 # mixed have a nice block-diagonal structure, the mixture does not.
 def pars(eta,locx):
    weights=[1-eta,eta]
-   pars=[{'submodel_parameters':[{'loc':locx,'scale':1.5},{'loc':5,'scale':2}]},
-         {'submodel_parameters':[{'loc':1,'scale':1},{'loc':5.5,'scale':1}]}]
-   return {'weights': weights, 'submodel_parameters': pars}
+   pars=[{'parameters':[{'loc':locx,'scale':1.5},{'loc':5,'scale':2}]},
+         {'parameters':[{'loc':1,'scale':1},{'loc':5.5,'scale':1}]}]
+   return {'weights': weights, 'parameters': pars}
 
 # Need to put the mixture model into a trival JointModel in order to use it with ParameterModel
 # Will need to have a bunch of samples from the mixture distribution for asymptotic formulae to work
@@ -44,9 +44,9 @@ def pars(eta,locx):
 
 def pars(eta,locx):
    weights=[1-eta,eta]
-   pars=[{'submodel_parameters':[{'loc':locx,'scale':1.5},{'loc':5,'scale':2}]},
-         {'submodel_parameters':[{'loc':1,'scale':1},{'loc':5.5,'scale':1}]}]
-   return {'weights': weights, 'submodel_parameters': pars}
+   pars=[{'parameters':[{'loc':locx,'scale':1.5},{'loc':5,'scale':2}]},
+         {'parameters':[{'loc':1,'scale':1},{'loc':5.5,'scale':1}]}]
+   return {'weights': weights, 'parameters': pars}
 
 # Put it in a JointModel so we can make a ParameterModel out of it
 mixj = jtd.JointModel([mix,mix])

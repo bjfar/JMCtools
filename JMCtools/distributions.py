@@ -40,13 +40,13 @@ class ListModel:
             pass # just use what was passed in 
         return parameters
 
-    def _freeze_submodels(self, submodel_parameters):
+    def _freeze_submodels(self, parameters):
         """Get list of all submodels, frozen with the supplied parameters"""
         if self.frozen:
             raise ValueError("This distribution is already frozen! You cannot re-freeze it with different parameters")
         else:
             out_submodels = []
-            for submodel, pars in zip(self.submodels,submodel_parameters):
+            for submodel, pars in zip(self.submodels,parameters):
                 out_submodels += [submodel(**pars)] # Freeze all submodels
         return out_submodels
 
@@ -55,30 +55,30 @@ class MixtureModel(ListModel):
     def __init__(self, submodels, weights=None, *args, **kwargs):
         super().__init__(submodels, weights)
 
-    def __call__(self, weights=None, submodel_parameters=None):
+    def __call__(self, weights=None, parameters=None):
         """Construct a 'frozen' version of the distribution
            Need to fix all parameters of all submodels if doing this.
         """
         if self.frozen:
             raise ValueError("This distribution is already frozen! You cannot re-freeze it with different parameters")
-        self._check_parameters(submodel_parameters)
+        self._check_parameters(parameters)
         weights = self._check_parameters(weights)
-        frozen_submodels = self._freeze_submodels(submodel_parameters)
+        frozen_submodels = self._freeze_submodels(parameters)
         return MixtureModel(frozen_submodels, weights) # Copy of this object, but frozen
 
-    def pdf(self, x, weights=None, submodel_parameters=None):
-        self._check_parameters(submodel_parameters)
+    def pdf(self, x, weights=None, parameters=None):
+        self._check_parameters(parameters)
         weights = self._check_parameters(weights)
 
         if weights==None:
             raise ValueError("No mixing weights supplied!")
-        if submodel_parameters==None:
-            submodel_parameters = [{} for i in range(len(self.submodels))]
+        if parameters==None:
+            parameters = [{} for i in range(len(self.submodels))]
         try:
-            _pdf = weights[0] * np.exp(self.submodels[0].logpdf(x,**submodel_parameters[0]))
+            _pdf = weights[0] * np.exp(self.submodels[0].logpdf(x,**parameters[0]))
         except AttributeError:
-            _pdf = weights[0] * np.exp(self.submodels[0].logpmf(x,**submodel_parameters[0]))
-        for w,submodel,pars in zip(weights[1:],self.submodels[1:],submodel_parameters[1:]):
+            _pdf = weights[0] * np.exp(self.submodels[0].logpmf(x,**parameters[0]))
+        for w,submodel,pars in zip(weights[1:],self.submodels[1:],parameters[1:]):
             try:
                 _pdf += w*np.exp(submodel.logpdf(x,**pars))
             except AttributeError:
@@ -88,17 +88,17 @@ class MixtureModel(ListModel):
     def logpdf(self, *args, **kwargs):
         return np.log(self.pdf(*args,**kwargs)) # No better way to do this for mixture model
 
-    def rvs(self, size, weights=None, submodel_parameters=None):
-        #print('MixtureModel.rvs: ', weights, submodel_parameters)
-        self._check_parameters(submodel_parameters)
+    def rvs(self, size, weights=None, parameters=None):
+        #print('MixtureModel.rvs: ', weights, parameters)
+        self._check_parameters(parameters)
         weights = self._check_parameters(weights)
         if weights==None:
             raise ValueError("No mixing weights supplied!")
-        if submodel_parameters==None:
-            submodel_parameters = [{} for i in range(len(self.submodels))]
+        if parameters==None:
+            parameters = [{} for i in range(len(self.submodels))]
         #print("weights:", weights, ", size:", size)
         submodel_choices = np.random.choice(range(len(self.submodels)), p=weights, size=size)
-        submodel_samples = [submodel.rvs(size=size,**pars) for submodel,pars in zip(self.submodels,submodel_parameters)]
+        submodel_samples = [submodel.rvs(size=size,**pars) for submodel,pars in zip(self.submodels,parameters)]
 
         _rvs = np.choose(submodel_choices, submodel_samples)
         # ahh crap, need to apply this in a more fancy way due to possible crazy nested structure of submodel_samples
@@ -135,7 +135,7 @@ class PowerMixtureModel(rv_continuous):
     def pdf(self, *args, **kwargs):
         return np.exp(self.logpdf(*args,**kwargs))
    
-    def get_norm(self, x, weights=None, submodel_parameters=None):
+    def get_norm(self, x, weights=None, parameters=None):
         """Compute normalisation for pdf for many parameters in parallel (possibly)"""
         # do it by Monte Carlo integration?
         # Even if data vector is long, should only have to do this once for a given array of parameters
@@ -156,15 +156,15 @@ class PowerMixtureModel(rv_continuous):
         #     for low,high in self.domain:
         #        np.random.uniform(low,high,s
 
-        # self.pdf(x, weights, submodel_parameters) 
+        # self.pdf(x, weights, parameters) 
 
-    def logpdf(self, x, weights=None, submodel_parameters=None):
+    def logpdf(self, x, weights=None, parameters=None):
         if weights==None:
             weights = self.weights # TODO check if frozen
-        if submodel_parameters==None:
-            submodel_parameters = [{} for i in range(len(self.submodels))]
-        _logpdf = weights[0] * self.submodels[0].logpdf(x,**submodel_parameters[0])
-        for w,submodel,pars in zip(weights[1:],self.submodels[1:],submodel_parameters[1:]):
+        if parameters==None:
+            parameters = [{} for i in range(len(self.submodels))]
+        _logpdf = weights[0] * self.submodels[0].logpdf(x,**parameters[0])
+        for w,submodel,pars in zip(weights[1:],self.submodels[1:],parameters[1:]):
             _logpdf += w * submodel.logpdf(x,**pars)
         return _logpdf - np.log(self.norm)
         
@@ -179,8 +179,8 @@ class JointModel(ListModel):
        Has a feature for overriding the pdf of submodels so that, for example, portions of
        the joint pdf may be profiled or marginalised analytically to speed up fitting routines.
     """
-    def __init__(self, submodels, submodel_parameters=None, submodel_logpdf_replacements=None, *args, **kwargs):        
-        super().__init__(submodels, submodel_parameters)
+    def __init__(self, submodels, parameters=None, submodel_logpdf_replacements=None, *args, **kwargs):        
+        super().__init__(submodels, parameters)
         # Here we DO need to store the submodel parameters, because we sometimes use them to evaluate
         # analytic replacements for the pdfs of the submodels
 
@@ -206,15 +206,15 @@ class JointModel(ListModel):
                          )
         return out
  
-    def __call__(self, submodel_parameters=None):
+    def __call__(self, parameters=None):
         """Construct a 'frozen' version of the distribution
            Need to fix all parameters of all submodels if doing this.
         """
         if self.frozen:
             raise ValueError("This distribution is already frozen! You cannot re-freeze it with different parameters")
-        submodel_parameters = self._check_parameters(submodel_parameters)
-        frozen_submodels = self._freeze_submodels(submodel_parameters)
-        return JointModel(frozen_submodels, submodel_parameters, self.submodel_logpdf_replacements) # Copy of this object, but frozen
+        parameters = self._check_parameters(parameters)
+        frozen_submodels = self._freeze_submodels(parameters)
+        return JointModel(frozen_submodels, parameters, self.submodel_logpdf_replacements) # Copy of this object, but frozen
 
     def submodel_logpdf(self,i,x,parameters={}):
         """Call logpdf (or logpmf) of a submodel, automatically detecting where parameters
@@ -305,15 +305,15 @@ class JointModel(ListModel):
         you want to keep the original pdf"""
         self.submodel_logpdf_replacements = listf
 
-    def rvs(self, size, submodel_parameters=None):
+    def rvs(self, size, parameters=None):
         """Output will be a list of length N, where N is the number
         of random variables in the joint PDF. Each element will be an array of shape
         'size', possibly with extra dimensions if submodel is multivariate. That is, each variable is drawn
         with 'size', and the results are joined into a list."""
-        #print("in rvs:", submodel_parameters)
+        #print("in rvs:", parameters)
         if self.frozen:
-            submodel_parameters = [{} for i in range(len(self.submodels))]
+            parameters = [{} for i in range(len(self.submodels))]
         else:   
-            submodel_parameters = self._check_parameters(submodel_parameters)
-        _rvs = [submodel.rvs(size=size,**pars) for submodel, pars in zip(self.submodels,submodel_parameters)]
+            parameters = self._check_parameters(parameters)
+        _rvs = [submodel.rvs(size=size,**pars) for submodel, pars in zip(self.submodels,parameters)]
         return _rvs
