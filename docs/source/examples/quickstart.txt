@@ -1,0 +1,8 @@
+.. _quick start examples:
+
+Examples from quick start
+=========================
+
+Return to :ref:`quick start` guide.
+
+.. literalinclude:: /../../tests/docs_examples/quickstart.py 

@@ -1,3 +1,5 @@
+.. _quick start:
+
 Quick start
 ============
 
@@ -18,10 +20,10 @@ A fast introduction to the package, then, is to see an example of this in action
 Combine independent distribution functions into a joint distribution
 --------------------------------------------------------------------
 
-.. _scipy_stats: https://docs.scipy.org/doc/scipy/reference/stats.html
+.. _scipy.stats: https://docs.scipy.org/doc/scipy/reference/stats.html
 
 Suppose we have several independent random variables, which can each
-be modelled by an object from `scipy_stats`_. JMCtools provides the 
+be modelled by an object from `scipy.stats`_. JMCtools provides the 
 :py:class:`.JointModel` class for the purpose of packaging these
 variables together into one single distribution-function-like object,
 which has similar (although not identical) behaviour and function to
@@ -64,16 +66,147 @@ check that they seem reasonable:
 Build relationships between model parameters and distribution parameters
 ------------------------------------------------------------------------
 
-Construct relationships between abstract model parameters and the
-   parameters of the distribution functions
+In JMCtools a `model` consists of two main components: a 
+:py:class:`.JointModel`, and a list of functions which take some
+abstract parameters and return the arguments needed to evaluate the
+distribution functions managed by the :py:class:`.JointModel`. These
+are combined via the :py:class:`.ParameterModel` class.
+
+For example, if we leave the variances of our two normal distributions
+fixed, and take the means as independent parameters, we can construct
+a simple two parameter model as follows:
+
+.. literalinclude:: /../../tests/docs_examples/quickstart.py
+   :start-after: build_model
+   :end-before: block_structure
+
+For the purposes of efficiently finding maximum likelihood estimators
+for these parameters, the :py:class:`.ParameterModel` class 
+automatically infers the block structure of the model. That is, it
+figures out which blocks of parameters are needed to evaluate which
+distribution functions. In our example the two parameters 
+independently fix the means of each normal distribution, so our
+2D model can be broken down into two independent 1D models. We can
+see that the :py:class:`.ParameterModel` object has noticed this
+by inspecting its :code:`blocks` attribute:
+
+.. literalinclude:: /../../tests/docs_examples/quickstart.py
+   :start-after: block_structure
+   :end-before: alt_model
+
+which produces::
+
+   >>> {(deps=['a'], submodels=[0]), (deps=['b'], submodels=[1])}
+
+Here the output is telling us that one parameter block depends on the
+parameter `a`, and fixes the arguments of the 0th component of the
+:py:class:`.JointModel`, and a second parameter block depends on `b`
+and fixes the 1th joint distribution component.
+
+As a quick aside, it is useful to see what happens if the model
+parameters correlate the arguments of the joint distribution
+components:
+
+.. literalinclude:: /../../tests/docs_examples/quickstart.py
+   :start-after: alt_model
+   :end-before: sim_data
+
+which produces::
+
+   >>> {(deps=['a', 'b'], submodels=[0, 1])}
+
+So now, there is only one parameter block, that depends on both
+parameters and fixes the arguments of both joint distribution
+components. The important difference is that now this block will
+require a 2D optimisation in order to locate the maximum 
+likelihood estimators for `a` and `b`, whereas previously they
+could be found by two independent 1D optimisations (which is
+much faster).
 
 .. _find_MLEs:
 
 Find maximum likelihood estimators
 ----------------------------------
 
+Now that we have a :py:class:`.ParameterModel`, we can use it
+to find maximum likelihood estimators for all the parameters
+that we have defined. This is made simple by the 
+:py:func:`find_MLE_parallel` member function, which can
+find MLEs for each simulated dataset, splitting the task
+over multiple processes if desired. 
+
+We simulated some data earlier using the :py:class:`.JointModel`
+class, but we can also simulate it directly
+from the :py:class:`.ParameterModel`:
+
+.. literalinclude:: /../../tests/docs_examples/quickstart.py
+   :start-after: sim_data
+   :end-before: find_MLEs
+
+Note that the shape of the simulated data is important. The
+length of the last dimension is interpreted as the number of
+draws from the joint distribution per `trial` or pseudoexperiment. 
+In this way, one can easily find the MLEs given multiple independent
+draws. But for simplicity we here do just one draw per experiment. 
+(For more complicated scenarios where different components of the
+joint distribution require different numbers of "draws", one must
+manually construct the appropriate :py:class:`.JointModel` before
+wrapping it in a :py:class:`.ParameterModel`.) 
+
+Finding the MLEs requires setting some options for the chosen
+optimisation method and then simply calling 
+:py:func:`find_MLE_parallel`
+
+.. literalinclude:: /../../tests/docs_examples/quickstart.py
+   :start-after: find_MLEs
+   :end-before: compute_stats
+
 .. _build_test_stats:
 
 Construct test statistics
 -------------------------
 
+.. _likelihood ratio: https://en.wikipedia.org/wiki/Likelihood-ratio_test 
+
+The final step is to construct some test statistic of interest!
+Here we will compute a `likelihood ratio`_ test statistic:
+
+.. literalinclude:: /../../tests/docs_examples/quickstart.py
+   :start-after: compute_stats
+
+.. figure:: /../../tests/docs_examples/quickstart_LLR.svg
+   :scale: 50%
+   :alt: pdf_LLR
+
+   Simulated distribution of likelihood ratio test statistic (red), and
+   expected distribution according to asymptotic theory (black).
+ 
+And that's it! Everything this package is good for is just an application
+of the above pipeline to different problems.
+
+The unalterated code for the above examples can be viewed :ref:`here <quick start examples>`.
+
+Limitations
+-----------
+
+.. _iminuit: https://iminuit.readthedocs.io/en/latest/ 
+.. _curse of dimensionality: https://en.wikipedia.org/wiki/Curse_of_dimensionality 
+
+Please note the following:
+
+* The `grid` optimisation method is very fast for low-dimensional
+  problems, and very slow for dimensions larger than about 2 due to
+  the `curse of dimensionality`_. Note 
+  also that results will be poor if the resolution of the grid is not
+  sufficiently below the variance of the MLEs.
+
+* The `minuit` optimisation method needs a little help from you in 
+  order to get reliable results. The starting guess needs to put
+  the minimiser in the correct global minima, and the step size needs
+  to be small enough that Minuit doesn't jump out of this minima.
+  For more tips on using Minuit see the `iminuit`_ documentation. 
+
+* There are currently no global optimisers implemented. Thus, if
+  finding MLEs for your parameters requires solving a difficult
+  global optimisation problem then this package cannot help you,
+  sorry!

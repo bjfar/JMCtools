@@ -18,6 +18,7 @@ functions that are built piecemeal from scipy.stats distribution objects
 
    usage/installation
    usage/quickstart
+   examples/quickstart
    examples/JointModel
    examples/MixtureModel
    examples/ParameterModel

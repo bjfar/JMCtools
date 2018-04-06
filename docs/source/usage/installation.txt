@@ -1,4 +1,15 @@
 Installation
 ============
 
+.. _github: https://github.com/bjfar/JMCtools
+.. _pip: https://pip.pypa.io/en/stable/installing/
+.. _anaconda: https://conda.io/docs/user-guide/install/download.html
 
+This project is hosted on `github`_. You can download and install it in the usual ways, for example::
+
+    git clone https://github.com/bjfar/JMCtools.git
+    pip install ./JMCtools 
+
+It is recommended to use `pip`_ to install the package since this is compatible with `anaconda`_ environments.
+
+Once installed the package can be imported in python using the module name :code:`JMCtools`.

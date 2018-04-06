@@ -345,6 +345,8 @@ class ParameterModel:
 
         starttime = time.time()
  
+        print("Using method {0}".format(method))
+
         # Evaluate the chunks in parallel
         if method=='grid':
             loopfunc = loop_func_grid
@@ -397,7 +399,7 @@ class ParameterModel:
                    for p,val in pmax_all.items():
                       val[i] = pmax[p]
         else:
-            ValueError("Unrecognised minimisation method selected!")
+            raise ValueError("Unrecognised minimisation method selected!")
 
         endtime = time.time()
         print("\nTook {0:.0f} seconds".format(endtime-starttime))
@@ -507,17 +509,20 @@ class ParameterModel:
         import iminuit
         #print("block.deps",block.deps)
         #print("options",options)
- 
+  
         # We need to filter out the options related to any parameters
         # that don't feature in this block.
         all_parameters = set(self.parameters)
         block_parameters = set(block.deps)
         non_block_parameters = all_parameters - block_parameters
-        block_options = {}
+        # Custom default options for minuit to prevent printing output to terminal
+        # Will o3ly use these if the user didn't provide them
+        block_options = {'pedantic': False, 'print_level': -1}
         for key,val in options.items():
             words = key.split("_")
             if all(w not in non_block_parameters for w in words):
                 block_options[key] = val # copy the option if unrelated to any non-block parameters
+           
 
         data,size = block_x
         Ntrials = np.sum(size[:-1]) # all data dimensions aside from the last are considered as independent trials.
