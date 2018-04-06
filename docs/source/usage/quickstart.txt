@@ -184,7 +184,7 @@ Here we will compute a `likelihood ratio`_ test statistic:
 And that's it! Everything this package is good for is just an application
 of the above pipeline to different problems.
 
-The unalterated code for the above examples can be viewed :ref:`here <quick start examples>`.
+The unadulterated code for the above examples can be viewed :ref:`here <quick start examples>`.
 
 Limitations
 -----------
