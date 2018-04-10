@@ -51,15 +51,22 @@ def get_data_slice(x,i,j=None):
        put everything back together in the same list structure. And we need to
        do it pretty efficiently since we're going to have to iterate through these 
        slices.
+
+       Edit: Modified to deal with differently shapped arrays.
+             Slicing indices always assumed to apply to first dimension.
+             This now means that data realisations should only iterate over the
+             first dimension, they should not be some bizarre shape.
+             If they are a weird shape they need to be reshaped before this
+             function can be applied.
     """
     data, size = x
     if j==None:
-       data_slice = list(apply_f(lambda A: almost_flatten(A)[i,:],data))
+       data_slice = list(apply_f(lambda A: A[i,...],data))
        slice_length = 1
     else:
-       data_slice = list(apply_f(lambda A: almost_flatten(A)[i:j,:],data))
+       data_slice = list(apply_f(lambda A: A[i:j,...],data))
        slice_length = j-i
-    return data_slice, (slice_length,size[-1])
+    return data_slice, tuple([slice_length] + list(size[1:]))
 
 def get_data_structure(x):
     """Report the nested structure of a list of lists of numpy arrays"""

@@ -289,7 +289,9 @@ class JointModel(ListModel):
         # Loop over rest of the submodels
         if len(self.submodels)>1:
             for i,(xi,submodel,alt_logpdf,pars) in enumerate(zip(x[1:],self.submodels[1:],self.submodel_logpdf_replacements[1:],parameters[1:])):
-                #print(pars)
+                #print('submodel:',i+1)
+                #print('pars:',pars)
+                #print('xi:',xi)
                 if alt_logpdf!=None:
                     _logpdf += alt_logpdf(xi,**pars)
                 else:
@@ -315,5 +317,12 @@ class JointModel(ListModel):
             parameters = [{} for i in range(len(self.submodels))]
         else:   
             parameters = self._check_parameters(parameters)
-        _rvs = [submodel.rvs(size=size,**pars) for submodel, pars in zip(self.submodels,parameters)]
+        _rvs = []
+        for i,(submodel, pars) in enumerate(zip(self.submodels,parameters)):
+            try:
+               _rvs += [submodel.rvs(size=size,**pars)]
+            except TypeError as e:
+               raise TypeError("Encountered error while evaluating submodel.rvs for submodel {0} with parameters {1}.".format(i,list(pars.keys()))) from e
+        # Previously had this. I expanded it out for improved error checking.
+        #_rvs = [submodel.rvs(size=size,**pars) for submodel, pars in zip(self.submodels,parameters)]
         return _rvs
