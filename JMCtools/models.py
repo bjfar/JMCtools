@@ -243,6 +243,7 @@ class ParameterModel:
            x = self.x # Use pre-generated data if none provided
         else:
            self.validate_data(x)
+        #print("pdf_args: ", self.get_pdf_args(parameters))
         return self.model.logpdf(x[0],self.get_pdf_args(parameters))
 
     def find_submodels_which_depend_on(self,parameter):
