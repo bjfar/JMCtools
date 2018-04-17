@@ -57,7 +57,7 @@ parmodel = jtm.ParameterModel(test_model,parfs)
 null_parameters = {'mu1':0, 'mu2':0, 'mu3':0, 'mu4':0}
 
 # Get some test data (will be stored internally)
-parmodel.simulate(100000,null_parameters)
+parmodel.simulate(10000,1,null_parameters)
 
 # Set ranges for parameter "scan"
 ranges = {}

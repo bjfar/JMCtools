@@ -59,6 +59,10 @@ class ListModel:
             parameters = self.parameters
         elif not self.frozen and parameters!=None:
             pass # just use what was passed in 
+        # Check that here are we have parameters for all submodels
+        # Ok no, that isn't really what this function is for.
+        #if len(parameters)!=len(self.submodels):
+        #    raise ValueError("Parameter list supplied to JointModel (len={0}) is not the same length as the number of submodels (len={1})! We need parameters for all submodels!".format(len(parameters),len(self.submodels)))
         return parameters
 
     def _freeze_submodels(self, parameters):
@@ -78,6 +82,7 @@ class ListModel:
         out = []
         i = 0 # Next index to be sliced
         #print("samples shape:",samples.shape)
+        #print(samples)
         for d in self.dims:
             if d==1:
                #print("slicing: {0}".format(i))
@@ -85,6 +90,8 @@ class ListModel:
             else:
                #print("slicing: {0}:{1}".format(i,i+d))
                out += [samples[...,i:i+d]]
+            #if out[i].shape[-1] != d:
+            #    raise ValueError("Failed to correctly slice samples! Output has wrong shape! (out[{0}].shape = {1}, dims[{0}] = {2})".format(i,out[i].shape,d))
             i = i+d
         #print("split samples shapes:",[o.shape for o in out])
         return out
@@ -239,14 +246,14 @@ class JointModel(ListModel):
         """Create a JointModel which is a subset of this one, by splitting off the submodels 
            with the listed indices into a separate object"""
         if self.frozen:
-            out = JointModel([self.submodels[i] for i in selection],
+            out = JointModel([(self.submodels[i],self.dims[i]) for i in selection],
                           parameters = [self.parameters[i] for i in selection],
                           frozen = True,
                           submodel_logpdf_replacements = [self.submodel_logpdf_replacements[i] for i in selection]
                          )
         else:
             # If not frozen, cannot supply parameters
-            out = JointModel([self.submodels[i] for i in selection],
+            out = JointModel([(self.submodels[i],self.dims[i]) for i in selection],
                           frozen = False,
                           submodel_logpdf_replacements = [self.submodel_logpdf_replacements[i] for i in selection]
                          )
@@ -269,6 +276,9 @@ class JointModel(ListModel):
            raise ValueError("This distribution is frozen! You are not permitted to alter the parameters used to compute the pdf of a frozen distribution object.")
         elif not self.frozen and parameters=={}:
            raise ValueError("This distribution is not frozen, but no parameters were supplied to compute the pdf! Please provide some.")
+        #print("Inspecting submodel[{0}]:".format(i))
+        #print(self.submodels[i].__doc__) # Just checking that the correct object is called!
+        #print("calling submodels[{0}].logpdf({1},**{2})".format(i,x,parameters))
         try:
              _logpdf = self.submodels[i].logpdf(x,**parameters)
         except AttributeError:
@@ -319,12 +329,21 @@ class JointModel(ListModel):
         """As above but for logpdf
         """
         parameters = self._check_parameters(parameters)
-        if parameters==None:
-            parameters = [{} for i in range(len(self.submodels))]
-        #print("x_in.shape:", x_in.shape)
+       #print("x_in.shape:", x_in.shape)
         x = self.split_data(np.atleast_2d(x_in)) # Convert data array into list of data for each submodel
-     
+        #for i,x_i in enumerate(x):
+        #    #print("x_{0}.shape: {1}".format(i,x_i.shape))
+        #    #print("self.dims[{0}]: {1}".format(i,self.dims[i]))
+        #    if x_i.shape[-1] != self.dims[i]:
+        #        raise ValueError("Failed to correctly separate data into correct size for submodel {0}! The ith data component has {1} variates, but we expected {2}!".format(i,x_i.shape[-1],self.dims[i]))
+        #print("JointModel.logpdf (with {0} submodels) called with parameters:".format(len(self.submodels)))
+        #for i,s in enumerate(parameters):
+        #    print(" submodel {0}:".format(i))
+        #    for key,val in s.items():
+        #        print("  {0}: {1}".format(key,val))
         # If pdf is frozen, need to 'mute' parameters for submodels whose pdf's have not been replaced by analytic expressions 
+        if parameters == None:
+            parameters = [{} for i in range(len(self.submodels))]
         if self.frozen:
             for i in range(len(self.submodels)):
                 if self.submodel_logpdf_replacements[i]==None:

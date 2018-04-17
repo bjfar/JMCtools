@@ -28,17 +28,28 @@ class Objective:
                 )
         self.run_yet = False
 
-    def __call__(self, *arg):
+    def __call__(self, *args):
         parameters = {}
         #if not self.run_yet: print("Calling Objective function...")
-        for name,val in zip(self.block.deps,arg):
+        #print("Calling Objective function...")
+        #print("Data is:", self.x)
+        #print("Args are:",*args)
+        #print("block.submodels:",self.block.submodels)
+        #print("block.submodel_deps:",self.block.submodel_deps)
+        #if not np.all(np.isfinite(args)):
+        #    raise ValueError("iminuit tried to call objective function with nan arguments! It has probably freaked out because the problem was too hard or something. Try improving your starting guesses and step sizes. (args were: {0})".format(args))
+        for name,val in zip(self.block.deps,args):
             #if not self.run_yet:
             #    print("Starting value for {0} is {1}".format(name,val))
-            V = np.atleast_1d(val)
-            parameters[name] = V.reshape(V.shape + tuple([1]*len(self.x.shape[:-1]))) # Add new singleton axes to broadcast against data 
+            #V = np.atleast_1d(val)
+            parameters[name] = val #V.reshape(V.shape + tuple([1]*len(self.x.shape[:-1]))) # Add new singleton axes to broadcast against data 
+            #print("parameters[{0}].shape:".format(name),parameters[name].shape)
         self.run_yet = True
         block_logpdf_all = self.block.logpdf(self.x, parameters)
+        #print("block_logpdf_all.shape",block_logpdf_all.shape)
+        #print("block_logpdf_all:",block_logpdf_all)
         block_logpdf = np.sum(block_logpdf_all,axis=-1) 
+        #print("-2*block_logpdf:",-2*block_logpdf)
         return -2*block_logpdf
  
 class Block:
@@ -117,8 +128,11 @@ def loop_func_minuit(par_object,options,i,data_slice):
     ##    for p,val in pmax_chunk.items():
     ##       val[j] = pmax[p]
     #print('Running find_MLE with options:', options)
-    Lmax_chunk, pmax_chunk = par_object.find_MLE(options,method='minuit',x=data_slice)
-    return i, Lmax_chunk, pmax_chunk
+    #Lmax_chunk, pmax_chunk = par_object.find_MLE(options,method='minuit',x=data_slice)
+
+    # No more chunking, can be taken care of elsewhere.
+    Lmax, pmax = par_object.find_MLE(options,method='minuit',x=data_slice)
+    return i, Lmax, pmax
 
 class ChunkedData:
     """A wrapper for ParameterModel data which turns it into a
@@ -144,7 +158,8 @@ class ChunkedData:
             slicesize = self.Nremainder
         # Extract the data slice
         #print("Extracting slice {0}".format(self.i))
-        dataslice = self.x[self.i] #c.get_data_slice(self.x,self.i*self.chunksize,self.i*self.chunksize+slicesize)
+        #dataslice = self.x[self.i] #c.get_data_slice(self.x,self.i*self.chunksize,self.i*self.chunksize+slicesize)
+        dataslice = self.x[self.i*self.chunksize:self.i*self.chunksize+slicesize] #c.get_data_slice(self.x,self.i*self.chunksize,self.i*self.chunksize+slicesize)
         #print("   data is:", dataslice)
         self.i += 1 # Move iterator variable
         return dataslice 
@@ -215,7 +230,9 @@ class ParameterModel:
         # and add these to the Blocks       
         final_block_list = set([])
         for block in block_list:
-           smlist = list(block.submodels) # get as a list to ensure iteration order
+           smlist = block.submodels # It is important that we know the order of submodels in the new JointModel,
+                                    # so that we can split up input data arrays correctly. The frozenset should
+                                    # have a fixed iteration order I think, since no elements of it will change.
            block_jointmodel = self.model.split(smlist)
            block_submodel_deps = [self.submodel_deps[i] for i in smlist]
            block_parfs = [self.parfs[i] for i in smlist]  
@@ -245,7 +262,7 @@ class ParameterModel:
         else:
            self.validate_data(x)
         #print("pdf_args: ", self.get_pdf_args(parameters))
-        return self.model.logpdf(x[0],self.get_pdf_args(parameters))
+        return self.model.logpdf(x,self.get_pdf_args(parameters))
 
     def find_submodels_which_depend_on(self,parameter):
         """Return the indices of the submodels which depend on 'parameter'"""
@@ -326,28 +343,29 @@ class ParameterModel:
         else:
            self.validate_data(x)
         
-        #print('in find_mle:, data=',data)
+        #print('in find_mle:, data=',x)
         Lmax_tot = 0 # output maximum log-likelihood
         MLE_pars_full = {}
-        for block in self.blocks:
+        for i,block in enumerate(self.blocks):
            block_data = self.repack_data(x,block.submodels) # Select data relevant to this submodel
-           #print('in find_mle:, block_data=',block_data)
+           #print('in find_mle:, block.submodels: {0}'.format(block.submodels))
+           #print('in find_mle:, block_data ({0})={1}'.format(i,block_data))
            Lmax, MLE_pars = self.find_MLE_for_block(block,options,block_data,method)
            Lmax_tot += Lmax
            MLE_pars_full.update(MLE_pars)
-
         return Lmax_tot, MLE_pars_full
 
     def repack_data(self,data,submodels):
         """Split data array into sub-arrays appropriate for evaluating the PDF of
            each block; i.e. for feeding to the JointModel belonging to each block"""
-        datalist = []
-        i = 0 # Next index to be sliced
-        for d in self.model.dims:
-            datalist += [data[...,i:i+d]]
-            i = i+d
+        # datalist = []
+        # i = 0 # Next index to be sliced
+        # for d in self.model.dims:
+        #     datalist += [data[...,i:i+d]]
+        #     i = i+d
+        datalist = self.model.split_data(data)
         # Data is now in list form. Need to select the submodels we want
-        # and return the re-stacked array
+        # (in the order we want!) and return the re-stacked array
         size = data.shape[:-1]
         out = np.concatenate([datalist[j].reshape(*size,-1) for j in submodels],axis=-1) #Makes sure number of dimensions is correct
         return out 
@@ -466,9 +484,6 @@ class ParameterModel:
         """Find MLE for a single block of parameters using 'grid'
            method. Mostly for internal use.
         """
-        data,size = block_x
-        #print("block_x:", block_x)
-
         # Construct some ND cube of parameters and maximise over it?
         # This is the simplest thing that is vectorisable, but will run
         # out of RAM if more than a couple of parameter dimensions needed at once
@@ -494,19 +509,21 @@ class ParameterModel:
             else:
                 p1d += [ np.linspace(*ranges[par], num=N, endpoint=True) ]
         PARS = np.meshgrid(*p1d,indexing='ij')
+        #print('block_x.shape:',block_x.shape)
         #print('PARS[0].shape:',PARS[0].shape)
         parameters = {}
         for i,par in enumerate(block.deps):
-           parameters[par] = PARS[i].reshape(PARS[i].shape + tuple([1]*len(size))) # Add new singleton axes to broadcast against data
+           parameters[par] = PARS[i].reshape(PARS[i].shape + tuple([1]*(len(block_x.shape)-1))) # Add new singleton axes to broadcast against data
            #print('parameters[{0}].shape: {1}'.format(par,parameters[par].shape))
  
-        block_logpdf_all = block.logpdf(data,parameters)
+        block_logpdf_all = block.logpdf(block_x,parameters)
         #print("block_logpdf_all.shape:", block_logpdf_all.shape)
  
         # We now want to interpret the last dimension of data as 'events per trial',
         # So we compute the joint logpdf as the sum over the last dimension of this output
         block_logpdf = np.sum(block_logpdf_all,axis=-1) 
-
+        #print("block_logpdf.shape:", block_logpdf.shape)
+ 
         # Maximise over all dimensions except the data dimension
 
         # Use this to check result of reshape/indexing manipulations
@@ -518,7 +535,6 @@ class ParameterModel:
         #max_idx = np.swapaxes(block_logpdf,0,-1).reshape((block_logpdf.shape[-1],-1)).argmax(-1)
         flatview = c.almost_flatten(block_logpdf)
         max_idx = flatview.argmax(axis=0)
-        #print("PARS[0].shape, data[0].shape:", PARS[0].shape, data[0].shape)
         #print("max_idx.shape:", max_idx.shape)        
         #print("max_idx:", max_idx)
 
@@ -574,22 +590,23 @@ class ParameterModel:
         #print("non_block_parameters:", non_block_parameters)
         #print("block_options:", block_options)   
 
-        Ntrials = block_x.shape[0] # First dimension indexes the trials
-        #print("Ntrials:",Ntrials)
-        Lmax = -1e99*np.ones(Ntrials)
-        maxpars = {p: np.zeros(Ntrials) for p in block.deps}
-        for i in range(Ntrials):
-            # Construct objective function using data from ith trial
-            ofunc = Objective(block, block_x[i])
-            # Minimise it!
-            m=iminuit.Minuit(ofunc,**block_options)
-            m.migrad(precision = 1e-5)
-            #print("m:",m)
-            pars = m.values
-            #print("m.values:", m.values)
-            parvals = [pars[p] for p in block.deps]
-            for p in block.deps:
-                maxpars[p][i] = pars[p]
-            Lmax[i] = -0.5 * ofunc(*parvals) # Objective is -2 * log(likelihood), but here we want to return just the log-likelihood
+        maxpars = {}
+        # Construct objective function
+        ofunc = Objective(block, block_x)
+        # Minimise it!
+        m=iminuit.Minuit(ofunc,**block_options)
+        min_struct, par_struct_list = m.migrad(precision = 1e-5)
+        if not min_struct.is_valid:
+            msg = ""
+            for key,val in min_struct.__dict__.items():
+                msg += "  {0} : {1}\n".format(key,val)
+            #raise ValueError("Minuit migrad failed to converge! Information from the run is as follows:\n{0}".format(msg))
+        #print("m:",m)
+        maxpars = m.values
+        #print("m.values:", m.values)
+        parvals = [maxpars[p] for p in block.deps]
+        #print("Finished minimisation: evaluating function at best fit:",parvals)
+
+        Lmax = -0.5 * ofunc(*parvals) # Objective is -2 * log(likelihood), but here we want to return just the log-likelihood
 
         return Lmax, maxpars
