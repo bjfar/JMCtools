@@ -79,22 +79,7 @@ class ListModel:
         """Split a numpy array of data into a list of sub-arrays to be passed to independent
         submodel objects.
         Components must be indexed by last dimension of 'samples' array"""
-        out = []
-        i = 0 # Next index to be sliced
-        #print("samples shape:",samples.shape)
-        #print(samples)
-        for d in self.dims:
-            if d==1:
-               #print("slicing: {0}".format(i))
-               out += [samples[...,i]]
-            else:
-               #print("slicing: {0}:{1}".format(i,i+d))
-               out += [samples[...,i:i+d]]
-            #if out[i].shape[-1] != d:
-            #    raise ValueError("Failed to correctly slice samples! Output has wrong shape! (out[{0}].shape = {1}, dims[{0}] = {2})".format(i,out[i].shape,d))
-            i = i+d
-        #print("split samples shapes:",[o.shape for o in out])
-        return out
+        return c.split_data(self,samples,self.dims)
 
 # Handy class for sampling from mixture models in scipy.stats
 class MixtureModel(ListModel):

@@ -231,6 +231,18 @@ m_noc_options = {**theta_opt, **theta_opt2, **s_opt, **s_opt2}
 # Number of MLE scans to perform in parallel
 Nproc = 5
 
+print("blocks:")
+for b in model.blocks:
+   print("   ",b)
+
+#print("null fit options:")
+#for k,v in m0_options.items():
+#    print("  {0}: {1}".format(k,v))
+#
+#print("general fit options:")
+#for k,v in m2_options.items():
+#    print("  {0}: {1}".format(k,v))
+
 # Sample from null distribution
 if regenerate:
    samples = model.simulate(Nsamples,1,null_parameters)

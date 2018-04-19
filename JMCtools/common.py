@@ -1,5 +1,7 @@
 """Common helper tools"""
 
+import numpy as np
+
 # def apply_f(f,a):
 #     """Apply some function to 'bottom level' objects in a nested structure of lists,
 #        return the result in the same nested listed structure.
@@ -71,4 +73,35 @@ def get_data_slice(x,i,j=None):
 def get_data_structure(x):
     """Report the nested structure of a list of lists of numpy arrays"""
     return list(apply_f(lambda A: A.shape, x))
- 
+
+def split_data(self,samples,dims):
+    """Split a numpy array of data into a list of sub-arrays to be passed to independent
+    submodel objects.
+    Components must be indexed by last dimension of 'samples' array
+    'dims' specifies the number of elements in last dimension to slice out, e.g.
+    dims = [1,1,2]
+    would assume that samples had a last dimensions of size 4, and it would be split
+    into 3 parts with sizes 1, 1, and 2 respectively.
+    """
+    out = []
+    i = 0 # Next index to be sliced
+    #print("samples shape:",samples.shape)
+    #print(samples)
+    # Check dimensions
+    if samples.shape[-1] != np.sum(dims):
+        raise ValueError("Dimension mismatch between supplied \
+arguments! 'samples' has last dimension of size {0}, however the sum \
+of the requested slice sizes is {0}! These need to match.".format(samples.shape[-1],np.sum(dims)))
+    for d in dims:
+        if d==1:
+           #print("slicing: {0}".format(i))
+           out += [samples[...,i]]
+        else:
+           #print("slicing: {0}:{1}".format(i,i+d))
+           out += [samples[...,i:i+d]]
+        i = i+d
+    #print("split samples shapes:",[o.shape for o in out])
+    return out
+
+
+

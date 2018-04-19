@@ -95,10 +95,10 @@ class Block:
         # Fortunately, this is stored in 'submodel_deps'
         args = []
         for deps,parf in zip(self.submodel_deps,self.parfs):
-            pdict = {p: parameters[p] for p in deps} # extract just the parameters that this parf needs
-            args += [parf(**pdict)]
-        return args       
- 
+            pars = (parameters[p] for p in deps) # extract just the parameters that this parf needs
+            args += [parf(*pars)] # We rely on the argument *order* rather than names, since the names can be overridden.
+        return args
+
     def logpdf(self,x,parameters):
         return self.jointmodel.logpdf(x,self.get_pdf_args(parameters))
 
@@ -166,11 +166,11 @@ class ChunkedData:
 
 class ParameterModel:     
     """An object for managing the mapping between a parameter space and
-       a set of distribution function, i.e. a JointModel object.
+       a set of distribution functions, i.e. a JointModel object.
        Also has methods for computing common statistics, such as
        maximum likelihood estimators"""
 
-    def __init__(self,jointmodel,parameter_funcs,x=None):
+    def __init__(self,jointmodel,parameter_funcs,parameter_names=None,x=None,fix={}):        
         """Note: once this object is constructed, it is best if you
            don't mess around with the internals of the stored JointModels
            and so on, or else you might screw up the internal
@@ -179,7 +179,20 @@ class ParameterModel:
         self.parfs = parameter_funcs
         # Get parameter dependencies of each block
         #self.submodel_deps = [f.__code__.co_varnames for f in self.parfs] # seems to get other variables too
-        self.submodel_deps = [inspect.getargspec(f)[0] for f in self.parfs] 
+
+        # Default arguments
+        if parameter_names is None:
+            parameter_names = [None for f in self.parfs]
+
+        # If manual parameter names are specified, uses those. Otherwise attempt to
+        # infer them from the function signatures.
+        self.submodel_deps = []
+        for f,args in zip(parameter_funcs,parameter_names):
+            if args is None:
+               func_args = inspect.getargspec(f)[0]
+            else:
+               func_args = args
+            self.submodel_deps += [func_args] 
         #print(self.submodel_deps)
         if x==None:
            self.x = [None for i in range(self.model.N_submodels)]
@@ -208,22 +221,25 @@ class ParameterModel:
         #block_list = set([(frozenset(deps),frozenset([i])) for i,deps in enumerate(self.submodel_deps)])
         #print(self.parfs)
         block_list = set([Block(deps,[i]) for i,deps in enumerate(self.submodel_deps)])
-        merge_occurred = True
-        while merge_occurred:
-           merge_occurred = False
+        no_merge_occurred = False
+        while not no_merge_occurred:
            new_block_list = set([])
            for block in block_list:
               block_deps = set([])
               block_submodels = set([])
               for parameter in block.deps:
-                 matches = self.find_submodels_which_depend_on(parameter)
-                 if len(matches)>0:
-                    block_submodels.update(matches)
-                    # Add all the parameters on which the newly added submodels depend
-                    for i in matches:
-                       block_deps.update(self.submodel_deps[i])
+                 # We need to skip parameters that are supposed to be considered as fixed
+                 if parameter not in fix.keys():
+                    matches = self.find_submodels_which_depend_on(parameter)
+                    if len(matches)>0:
+                       block_submodels.update(matches)
+                       # Add all the parameters on which the newly added submodels depend
+                       for i in matches:
+                          block_deps.update(self.submodel_deps[i])
               #new_block_list.add((frozenset(block_deps),frozenset(block_submodels)))
               new_block_list.add(Block(block_deps,block_submodels))
+           if(block_list==new_block_list):
+              no_merge_occurred = True # Nothing changed, we are finished.   
            block_list = new_block_list
 
         # Break down full JointModel into individual JointModels for each block
@@ -252,8 +268,8 @@ class ParameterModel:
         # Fortunately, this is stored in 'submodel_deps'
         args = []
         for deps,parf in zip(self.submodel_deps,self.parfs):
-            pdict = {p: parameters[p] for p in deps} # extract just the parameters that this parf needs
-            args += [parf(**pdict)]
+            pars = (parameters[p] for p in deps) # extract just the parameters that this parf needs
+            args += [parf(*pars)] # We rely on the argument *order* rather than names, since the names can be overridden.
         return args
 
     def logpdf(self,parameters,x=None):
@@ -580,10 +596,10 @@ class ParameterModel:
         block_options = {'pedantic': False, 'print_level': -1}
         for key,val in options.items():
             words = key.split("_")
-            if words[0] == 'error':
+            if words[0] == 'error' or words[0] == 'fix':
                varname = '_'.join(words[1:])
-               if varname not in non_block_parameters:
-                  block_options[key] = val # copy the option if it isn't the step size for a non-block parameter
+               if varname in block_parameters:
+                  block_options[key] = val # copy the option if it is the step size or 'fix' option for a block parameter
             elif key not in non_block_parameters:
                 block_options[key] = val # copy the option if it is not a non-block parameter
         #print("block_parameters:", block_parameters)
