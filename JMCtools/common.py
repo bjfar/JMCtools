@@ -113,6 +113,15 @@ def e_pval(samples,obs):
     # Better sort the samples into ascending order first!
     # Note that sorting is along *last* axis by default! Probably only want
     # 1D data, but just remember this!
-    s = np.sort(samples)
+ 
+    # One problem: we have to decide how to treat NaNs.
+    # I think it is best if we just remove them and pretend they
+    # don't exist.
+    s = np.sort(samples[np.isfinite(samples)])
     CDF = spi.interp1d([0]+list(s)+[1e99],[0]+list(eCDF(s))+[1])
+    for si in s:
+       print(si, CDF(si))
+    print("obs:",obs)
+    print("CDF(obs):",CDF(obs))
+    print("pval(obs):",1-CDF(obs))
     return 1 - CDF(obs)
