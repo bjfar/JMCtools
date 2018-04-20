@@ -302,7 +302,7 @@ class ParameterModel:
         self.validate_data(x)
         self.x = x
 
-    def simulate(self,Ntrials,Ndraws=1,null_parameters=None):
+    def simulate(self,Ntrials,null_parameters=None,Ndraws=1):
         """Generate simulated datasets to use for parameter estimation etc.
            null_parameters - parameters to use for the simulation.
            Ntrials - Number of pseudoexperiments to simulate

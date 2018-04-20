@@ -1,6 +1,7 @@
 """Common helper tools"""
 
 import numpy as np
+import scipy.interpolate as spi
 
 # def apply_f(f,a):
 #     """Apply some function to 'bottom level' objects in a nested structure of lists,
@@ -74,7 +75,7 @@ def get_data_structure(x):
     """Report the nested structure of a list of lists of numpy arrays"""
     return list(apply_f(lambda A: A.shape, x))
 
-def split_data(self,samples,dims):
+def split_data(samples,dims):
     """Split a numpy array of data into a list of sub-arrays to be passed to independent
     submodel objects.
     Components must be indexed by last dimension of 'samples' array
@@ -103,5 +104,15 @@ of the requested slice sizes is {0}! These need to match.".format(samples.shape[
     #print("split samples shapes:",[o.shape for o in out])
     return out
 
+def eCDF(x):
+    """Get empirical CDF of some samples"""
+    return np.arange(1, len(x)+1)/float(len(x))
 
-
+def e_pval(samples,obs):
+    """Compute an empirical p-value based on simulated test-statistic values"""
+    # Better sort the samples into ascending order first!
+    # Note that sorting is along *last* axis by default! Probably only want
+    # 1D data, but just remember this!
+    s = np.sort(samples)
+    CDF = spi.interp1d([0]+list(s)+[1e99],[0]+list(eCDF(s))+[1])
+    return 1 - CDF(obs)

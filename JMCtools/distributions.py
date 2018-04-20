@@ -79,7 +79,7 @@ class ListModel:
         """Split a numpy array of data into a list of sub-arrays to be passed to independent
         submodel objects.
         Components must be indexed by last dimension of 'samples' array"""
-        return c.split_data(self,samples,self.dims)
+        return c.split_data(samples,self.dims)
 
 # Handy class for sampling from mixture models in scipy.stats
 class MixtureModel(ListModel):
