@@ -21,11 +21,8 @@ import numpy as np
 # My screen is now really high-res so make images bigger by default
 plt.rcParams["figure.dpi"] = 3*72
 
-      
 # Create a JointModel, and define a mapping from some parameter
 # space into the parameters of the JointModel distribution functions
-
-test_model = jtd.JointModel([sps.norm,sps.norm,sps.norm])
 
 # Freaky inter-dependent model that probably screws with Wilk's theorem regularity conditions
 #def pars2_A(mu1,mu2):
@@ -47,17 +44,16 @@ def pars2_B(mu2):
 def pars2_C(mu3):
     return {"loc":mu3, "scale":1}
 
-
-# Can infer parameter dependencies of blocks from this list of functions
-parfs = [pars2_A, pars2_B, pars2_C]
-
-parmodel = jtm.ParameterModel(test_model,parfs)
+jointmodel = jtd.JointModel([jtd.TransDist(sps.norm,pars2_A),
+                             jtd.TransDist(sps.norm,pars2_B),
+                             jtd.TransDist(sps.norm,pars2_C)])
+parmodel = jtm.ParameterModel(jointmodel,[['mu1'],['mu2'],['mu3']])
 
 # Define the null hypothesis
 null_parameters = {'mu1':0, 'mu2':0, 'mu3':0, 'mu4':0}
 
 # Get some test data (will be stored internally)
-parmodel.simulate(10000,1,null_parameters)
+parmodel.simulate(10000,null_parameters)
 
 # Set ranges for parameter "scan"
 ranges = {}

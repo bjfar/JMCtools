@@ -24,6 +24,18 @@ import scipy.interpolate as spi
 #     else:
 #         return f(a,b)
 
+def merge_dicts(*dict_args):
+    """
+    Given any number of dicts, shallow copy and merge into a new dict,
+    precedence goes to key value pairs in latter dicts.
+    In Python >3.5 can just do {**a,**b,etc}, but we need backwards
+    compatibility sadly...
+    """
+    result = {}
+    for dictionary in dict_args:
+        result.update(dictionary)
+    return result
+
 # Generalisation of the above to any number of arguments
 def apply_f(f,*iters):
     """Apply some function to matching 'bottom level' objects 
@@ -87,12 +99,12 @@ def split_data(samples,dims):
     out = []
     i = 0 # Next index to be sliced
     #print("samples shape:",samples.shape)
-    #print(samples)
+    #print("dims:", dims)
     # Check dimensions
     if samples.shape[-1] != np.sum(dims):
         raise ValueError("Dimension mismatch between supplied \
 arguments! 'samples' has last dimension of size {0}, however the sum \
-of the requested slice sizes is {0}! These need to match.".format(samples.shape[-1],np.sum(dims)))
+of the requested slice sizes is {1}! These need to match.".format(samples.shape[-1],np.sum(dims)))
     for d in dims:
         if d==1:
            #print("slicing: {0}".format(i))

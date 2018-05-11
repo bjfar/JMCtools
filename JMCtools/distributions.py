@@ -217,7 +217,14 @@ class JointModel(ListModel):
        the joint pdf may be profiled or marginalised analytically to speed up fitting routines.
     """
     def __init__(self, submodels, parameters=None, submodel_logpdf_replacements=None, *args, **kwargs):        
-        super().__init__(submodels, parameters,*args,**kwargs)
+        # Need some weird stuff for Python 2 and 3 compatibility
+        if issubclass(ListModel, object):
+            # new style class, call super
+            super(JointModel, self).__init__(submodels,parameters,*args,**kwargs)
+        else:
+            # old style class, call __init__ manually
+            ListModel.__init__(self,submodels,parameters,*args,**kwargs)
+        #super().__init__(submodels, parameters,*args,**kwargs)
         # Here we DO need to store the submodel parameters, because we sometimes use them to evaluate
         # analytic replacements for the pdfs of the submodels
 
@@ -378,7 +385,11 @@ class JointModel(ListModel):
             try:
                _rvs += [submodel.rvs(size=size,**pars)]
             except TypeError as e:
-               raise TypeError("Encountered error while evaluating submodel.rvs for submodel {0} with parameters {1}.".format(i,list(pars.keys()))) from e
+               # Python 3 only
+               #raise TypeError("Encountered error while evaluating submodel.rvs for submodel {0} with parameters {1}.".format(i,list(pars.keys()))) from e
+               # Python 2 compatible, but lose traceback
+               raise TypeError("Encountered error while evaluating submodel.rvs for submodel {0} with parameters {1}.".format(i,list(pars.keys())))
+
         # Previously had this. I expanded it out for improved error checking.
         #_rvs = [submodel.rvs(size=size,**pars) for submodel, pars in zip(self.submodels,parameters)]
        
@@ -392,6 +403,55 @@ class JointModel(ListModel):
         #for X in _rvs:
         #    print(X.shape)
         size = np.atleast_1d(size)
-        out = np.concatenate([a.reshape(*size,-1) for a in _rvs],axis=-1) #Make sure number of dimensions is correct
+        newsize = tuple(list(size) + [-1])
+        out = np.concatenate([a.reshape(*newsize) for a in _rvs],axis=-1) #Make sure number of dimensions is correct
         #print("out.shape:", out.shape)
         return out
+
+class TransDist:
+    """Transform a probability distribution into a different parameterisation
+       Todo: implement frozen-ness
+    """
+    
+    def __init__(self,orig_dist,transform_func,renaming_map=None):
+        """renaming_map should be a list of string instructions
+           like
+            ['a -> b', 'x -> y']
+           which indicated parameter 'a' should be called as 'b'
+           in the transform_func, and so on.
+        """
+        self.transform_func = transform_func
+        self.orig_dist = orig_dist
+        renaming = {}
+        if renaming_map is not None:
+            for item in renaming_map:
+                key,val = item.split(' -> ')
+                renaming[key] = val
+        self.renaming_map = renaming
+
+    def rvs(self, size, **parameters):
+        """Generate random samples from the distribution"""
+        orig_pars = self.get_orig_args(**parameters)
+        return self.orig_dist.rvs(size=size,**orig_pars)
+
+    def get_orig_args(self,**parameters):
+        """Compute parameters for the original distribution using the
+           reparameterisation"""
+        # Need to take into account possible renaming:
+        renamed_parameters = {}
+        for key, val in parameters.items():
+            if key in self.renaming_map.keys():
+                renamed_parameters[self.renaming_map[key]] = val
+            else:
+                renamed_parameters[key] = val
+        return self.transform_func(**renamed_parameters)
+
+    # Which of logpmf or logpdf actually works will depend
+    # on which one exists in the underlying distribution
+    def logpmf(self, x, **parameters):
+        orig_pars = self.get_orig_args(**parameters)
+        return self.orig_dist.logpmf(x,**orig_pars) 
+
+    def logpdf(self, x, **parameters):
+        orig_pars = self.get_orig_args(**parameters)
+        return self.orig_dist.logpdf(x,**orig_pars)

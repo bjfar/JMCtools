@@ -25,8 +25,6 @@ plt.rcParams["figure.dpi"] = 3*72
 # Create a JointModel, and define a mapping from some parameter
 # space into the parameters of the JointModel distribution functions
 
-test_model = jtd.JointModel([sps.norm,sps.norm,sps.norm])
-
 # Freaky inter-dependent model that probably screws with Wilk's theorem regularity conditions
 #def pars2_A(mu1,mu2):
 #    return {"loc":mu1+mu2, "scale":1}
@@ -47,17 +45,31 @@ def pars2_B(mu2):
 def pars2_C(mu3):
     return {"loc":mu3, "scale":1}
 
+# # Construct transformed distributions
+# submodels = [(jtd.TransDist(sps.norm,pars2_A),['mu1']),
+#              (jtd.TransDist(sps.norm,pars2_B),['mu2']),
+#              (jtd.TransDist(sps.norm,pars2_C),['mu3'])]
+# 
+# # Combine transformed distributions into one object that manages their parameter dependency structure
+# parmodel = jtm.ParameterModel.fromList(submodels)
 
-# Can infer parameter dependencies of blocks from this list of functions
-parfs = [pars2_A, pars2_B, pars2_C]
-
-parmodel = jtm.ParameterModel(test_model,parfs)
+# Could also construct it like this:
+# jointmodel = jtd.JointModel([jtd.TransDist(sps.norm,pars2_A),
+#                              jtd.TransDist(sps.norm,pars2_B),
+#                              jtd.TransDist(sps.norm,pars2_C)])
+# parmodel = jtm.ParameterModel(jointmodel,[['mu1'],['mu2'],['mu3']])
+# 
+# Or like this:
+parmodel = jtm.ParameterModel([jtd.TransDist(sps.norm,pars2_A),
+                               jtd.TransDist(sps.norm,pars2_B),
+                               jtd.TransDist(sps.norm,pars2_C)]
+                              ,[['mu1'],['mu2'],['mu3']])
 
 # Define the null hypothesis
 null_parameters = {'mu1':0, 'mu2':0, 'mu3':0}
 
 # Get some test data (will be stored internally)
-parmodel.simulate(10000,1,null_parameters)
+parmodel.simulate(10000,null_parameters)
 
 # Set ranges for parameter "scan"
 ranges = {}

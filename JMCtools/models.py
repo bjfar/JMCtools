@@ -1,3 +1,4 @@
+from __future__ import print_function
 import JMCtools as jt
 import JMCtools.distributions as jtd
 import numpy as np
@@ -8,6 +9,23 @@ import itertools
 import time
 import sys
 #from sys import stdout
+
+# Hacky thing to get a decent traceback from concurrent processing in Python 2.x
+# Credit: https://stackoverflow.com/a/29357032/1447953
+import functools
+import traceback
+def reraise_with_stack(func):
+
+    @functools.wraps(func)
+    def wrapped(*args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except Exception as e:
+            traceback_str = traceback.format_exc(e)
+            raise StandardError("Error occurred. Original traceback "
+                                "is\n%s\n" % traceback_str)
+
+    return wrapped
 
 class Objective:
     """Constructs the objective function to be fitted my iminuit in the 
@@ -54,22 +72,21 @@ class Objective:
  
 class Block:
     """Record of dependency structure of a block of submodels in ParameterModel"""
-    def __init__(self,deps,submodels,jointmodel=None,submodel_deps=None,parfs=None):
+    def __init__(self,deps,submodels,jointmodel=None,submodel_deps=None):
        self.deps = frozenset(deps) # parameter dependencies
        self.submodels = frozenset(submodels) # indices of submodels associated with this block 
        self.jointmodel = jointmodel
        self.submodel_deps = submodel_deps # parameter dependencies of each submodel in jointmodel
-       self.parfs = parfs # functions to compute jointmodel.pdf arguments from parameters
 
     @classmethod  
-    def fromBlock(cls,block,jointmodel=None,submodel_deps=None,parfs=None):
+    def fromBlock(cls,block,jointmodel=None,submodel_deps=None):
        deps = block.deps
        submodels = block.submodels
        if (block.jointmodel!=None) and (jointmodel!=None):
           raise ValueError("Tried to set 'jointmodel' for a copy of a Block that already has a 'jointmodel' set!")
        if block.jointmodel!=None:
           jointmodel = block.jointmodel
-       return cls(deps,submodels,jointmodel,submodel_deps,parfs)
+       return cls(deps,submodels,jointmodel,submodel_deps)
 
     # Methods for hashing in sets
     def __repr__(self):
@@ -88,15 +105,12 @@ class Block:
         """Obtain the argument list required to evaluate the joint
            pdf of a block, from the more abstract parameters known
            to this object"""
-       
-        # For each submodel, we need to run its 'parf' function
-        # But to do that we need to first know what parameters that
-        # function needs.
-        # Fortunately, this is stored in 'submodel_deps'
+
+        # We don't worry about transforming anymore, but we still
+        # need to provide the parameters as a list for JointModel.
         args = []
-        for deps,parf in zip(self.submodel_deps,self.parfs):
-            pars = (parameters[p] for p in deps) # extract just the parameters that this parf needs
-            args += [parf(*pars)] # We rely on the argument *order* rather than names, since the names can be overridden.
+        for deps in self.submodel_deps:
+            args += [{p:parameters[p] for p in deps}] # extract just the parameters that this submodel needs
         return args
 
     def logpdf(self,x,parameters):
@@ -105,11 +119,13 @@ class Block:
 # Functions to be run by worker processes in ParameterModel.find_MLE_parallel
 # Slightly different approach used depending on the minimisation
 # method chosen.
+@reraise_with_stack
 def loop_func_grid(par_object,options,i,data_slice):
    #data_slice = c.get_data_slice(data,i*chunksize,i*chunksize+slicesize)  
    Lmax_chunk, pmax_chunk = par_object.find_MLE(options,method='grid',x=data_slice)
    return i, Lmax_chunk, pmax_chunk
 
+@reraise_with_stack
 def loop_func_minuit(par_object,options,i,data_slice):
     # Here we farm off to worker processes by chunk
     # Minuit can't do the whole chunk at once, but
@@ -164,36 +180,69 @@ class ChunkedData:
         self.i += 1 # Move iterator variable
         return dataslice 
 
+    def next(self):
+        """For Python 2.x compatibility"""
+        return self.__next__()
+
 class ParameterModel:     
     """An object for managing the mapping between a parameter space and
        a set of distribution functions, i.e. a JointModel object.
        Also has methods for computing common statistics, such as
        maximum likelihood estimators"""
 
-    def __init__(self,jointmodel,parameter_funcs,parameter_names=None,x=None,fix={}):        
-        """Note: once this object is constructed, it is best if you
-           don't mess around with the internals of the stored JointModels
-           and so on, or else you might screw up the internal
-           consistency of the member routines in this object"""
-        self.model = jointmodel
-        self.parfs = parameter_funcs
-        # Get parameter dependencies of each block
-        #self.submodel_deps = [f.__code__.co_varnames for f in self.parfs] # seems to get other variables too
+    #def __init__(self,jointmodel,parameter_funcs,parameter_names=None,x=None,fix={}):        
+    #    """Note: once this object is constructed, it is best if you
+    #       don't mess around with the internals of the stored JointModels
+    #       and so on, or else you might screw up the internal
+    #       consistency of the member routines in this object"""
 
-        # Default arguments
-        if parameter_names is None:
-            parameter_names = [None for f in self.parfs]
+    # Changing this up. Should FIRST convert all submodels into the appropriate
+    # parameterisation using TransDist. Then just supply them all directly
+    # to this class. Or I guess can wrap them in a jointmodel first, why not. We'll
+    # stick with that for now.
+  
+    # Why not both?
+ 
+    @classmethod  
+    def fromList(cls,submodels_and_parameters,x=None,fix={}):
+       self.submodels_and_parameters = submodels_and_parameters 
+       # should be a list of (model,parameter_list) pairs.
+       # e.g. (sps.norm,('loc','scale'))
+       # though would usually transform them to something else with TransDist
+       submodels = [item[0] for item in self.submodels_and_parameters]
+       parameters = [item[1] for item in self.submodels_and_parameters]
+       joint = jtd.JointModel(submodels)
+       return cls(joint,parameters,x,fix)
+    
+    def __init__(self,jointmodel,parameters=None,x=None,fix={}):
+        try:
+            # We can allow a list of submodels to be supplied rather than a pre-constructed jointmodel
+            # Both can work.
+            iter(jointmodel)
+            self.model = jtd.JointModel(jointmodel)
+        except TypeError:
+            # Ok not a list or something, assume it is already JointModel object    
+            self.model = jointmodel
 
         # If manual parameter names are specified, uses those. Otherwise attempt to
-        # infer them from the function signatures.
+        # infer them from the function signatures of the underlying distribution.
+        if parameters is None:
+            parameters = [None for i in len(self.model.submodels)]
+        
         self.submodel_deps = []
-        for f,args in zip(parameter_funcs,parameter_names):
-            if args is None:
-               func_args = inspect.getargspec(f)[0]
+        for submodel,pars in zip(self.model.submodels,parameters):
+            if pars is None:
+               try:
+                   func_args = inspect.getargspec(submodel.logpdf)[0]
+               except AttributeError:
+                   func_args = inspect.getargspec(submodel.logpmf)[0]
+               # Remove 'x' from this list, we only want the parameter names
+               func_args = [item for item in func_args if item is not 'x']
             else:
-               func_args = args
+               func_args = pars
             self.submodel_deps += [func_args] 
         #print(self.submodel_deps)
+ 
         if x==None:
            self.x = [None for i in range(self.model.N_submodels)]
         else:
@@ -219,7 +268,6 @@ class ParameterModel:
         # block list is a list (well, set) of pairs; the submodels in a block, and their parameter dependencies
         # Starts off assuming all submodels form independent blocks. We will merge from there.
         #block_list = set([(frozenset(deps),frozenset([i])) for i,deps in enumerate(self.submodel_deps)])
-        #print(self.parfs)
         block_list = set([Block(deps,[i]) for i,deps in enumerate(self.submodel_deps)])
         no_merge_occurred = False
         while not no_merge_occurred:
@@ -251,11 +299,10 @@ class ParameterModel:
                                     # have a fixed iteration order I think, since no elements of it will change.
            block_jointmodel = self.model.split(smlist)
            block_submodel_deps = [self.submodel_deps[i] for i in smlist]
-           block_parfs = [self.parfs[i] for i in smlist]  
-           final_block_list.add(Block.fromBlock(block,block_jointmodel,block_submodel_deps,block_parfs))
+           final_block_list.add(Block.fromBlock(block,block_jointmodel,block_submodel_deps))
 
         self.blocks = final_block_list
-        #print(self.blocks)
+        print(self.blocks)
 
     def get_pdf_args(self,parameters):
         """Obtain the argument list required to evaluate the joint
@@ -267,9 +314,17 @@ class ParameterModel:
         # function needs.
         # Fortunately, this is stored in 'submodel_deps'
         args = []
-        for deps,parf in zip(self.submodel_deps,self.parfs):
-            pars = (parameters[p] for p in deps) # extract just the parameters that this parf needs
-            args += [parf(*pars)] # We rely on the argument *order* rather than names, since the names can be overridden.
+        print("In JointModel.get_pdf_args: parameters = ",parameters)
+        for deps in self.submodel_deps:
+            try:
+                pars = {p:parameters[p] for p in deps} # extract just the parameters that a given submodel needs
+            except Exception:
+                for p in deps:
+                    try:
+                        parameters[p]
+                    except KeyError:
+                        raise KeyError("In JointModel: Parameter '{0}' missing! A submodel expected parameters {1}, but we have only received parameters {2}".format(p,deps,parameters.keys()))  
+            args += [pars] # List of dictionaries of arguments to be passed to each submodel
         return args
 
     def logpdf(self,parameters,x=None):
@@ -315,11 +370,12 @@ class ParameterModel:
            multivariate). This is the shape required by other routines
            in the ParameterModel class.
         """
+        print(null_parameters)
         if null_parameters!=None:
            args = self.get_pdf_args(null_parameters)
         else:
            args = {}
-        #print(args)
+        print(args)
         self.x = self.model.rvs((Ntrials,Ndraws),args)
         return self.x     
 
@@ -383,7 +439,8 @@ class ParameterModel:
         # Data is now in list form. Need to select the submodels we want
         # (in the order we want!) and return the re-stacked array
         size = data.shape[:-1]
-        out = np.concatenate([datalist[j].reshape(*size,-1) for j in submodels],axis=-1) #Makes sure number of dimensions is correct
+        newsize = tuple(list(size) + [-1]) 
+        out = np.concatenate([datalist[j].reshape(*newsize) for j in submodels],axis=-1) #Makes sure number of dimensions is correct
         return out 
 
     def find_MLE_parallel(self,options,x=None,method='grid',chunksize=100,Nprocesses=None,seeds=None):
@@ -452,7 +509,7 @@ class ParameterModel:
                 seed_opts = map(seed,range(Ntrials))
                 opts = []
                 for sopts in seed_opts:
-                   opts += [{**options, **sopts}]
+                   opts += [c.merge_dicts(options,sopts)]
             else:
                 opts = itertools.repeat(options)
             # Check that iterator construction worked
