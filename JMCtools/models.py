@@ -2,7 +2,6 @@ from __future__ import print_function
 import JMCtools as jt
 import JMCtools.distributions as jtd
 import numpy as np
-import inspect
 import JMCtools.common as c
 import concurrent.futures
 import itertools
@@ -51,15 +50,16 @@ class Objective:
         #if not self.run_yet: print("Calling Objective function...")
         #print("Calling Objective function...")
         #print("Data is:", self.x)
-        #print("Args are:",*args)
         #print("block.submodels:",self.block.submodels)
         #print("block.submodel_deps:",self.block.submodel_deps)
         #if not np.all(np.isfinite(args)):
         #    raise ValueError("iminuit tried to call objective function with nan arguments! It has probably freaked out because the problem was too hard or something. Try improving your starting guesses and step sizes. (args were: {0})".format(args))
+        #print("Args are:")
         for name,val in zip(self.block.deps,args):
             #if not self.run_yet:
             #    print("Starting value for {0} is {1}".format(name,val))
             #V = np.atleast_1d(val)
+            #print("   {0}: {1}".format(name,val))
             parameters[name] = val #V.reshape(V.shape + tuple([1]*len(self.x.shape[:-1]))) # Add new singleton axes to broadcast against data 
             #print("parameters[{0}].shape:".format(name),parameters[name].shape)
         self.run_yet = True
@@ -205,43 +205,71 @@ class ParameterModel:
  
     @classmethod  
     def fromList(cls,submodels_and_parameters,x=None,fix={}):
-       self.submodels_and_parameters = submodels_and_parameters 
-       # should be a list of (model,parameter_list) pairs.
-       # e.g. (sps.norm,('loc','scale'))
-       # though would usually transform them to something else with TransDist
-       submodels = [item[0] for item in self.submodels_and_parameters]
-       parameters = [item[1] for item in self.submodels_and_parameters]
-       joint = jtd.JointModel(submodels)
-       return cls(joint,parameters,x,fix)
+       try:
+           submodels = []
+           parameters = []
+           for submodel, pars in submodels_and_parameters:
+             submodels += [submodel]
+             parameters += [pars]
+       except ValueError:
+          # No parameters provided (probably), will have to infer them 
+          submodels = submodels_and_parameters
+          parameters = None
+       joint = jtd.JointDist(submodels)
+       return cls(joint,parameters,x,fix)  
     
     def __init__(self,jointmodel,parameters=None,x=None,fix={}):
+        iterable = True
         try:
+            print("Testing if iterable")
             # We can allow a list of submodels to be supplied rather than a pre-constructed jointmodel
             # Both can work.
             iter(jointmodel)
-            self.model = jtd.JointModel(jointmodel)
         except TypeError:
+            iterable = False
+
+        if iterable:
+            # If 'jointmodel' is a list of (submodel,transform_function) pairs then we
+            # can also deal with that automatically:
+            transmodels = []
+            try:
+               print("Testing if list of pairs")
+               for dist, func in jointmodel:
+                   transmodels += [jtd.TransDist(dist,func)]
+               self.model = jtd.JointDist(transmodels)
+            except ValueError:
+               try:
+                   print("Testing if list of triples")
+                   for dist, func, remap in jointmodel:
+                       transmodels += [jtd.TransDist(dist,func,remap)]
+                   self.model = jtd.JointDist(transmodels)
+               except ValueError:
+                   print("Wrong number of iterables?")
+                   raise
+            except TypeError:
+                # Ok items in list are not iterable: assume it is already a good argument for the JointModel constructor
+               self.model = jtd.JointDist(jointmodel)
+        else:
+            print("Assigning directly to self.model") 
             # Ok not a list or something, assume it is already JointModel object    
             self.model = jointmodel
 
+        #print('model:',self.model)
+        #print('submodels:', self.model.submodels)
+        #print('parameters:', parameters)
         # If manual parameter names are specified, uses those. Otherwise attempt to
         # infer them from the function signatures of the underlying distribution.
         if parameters is None:
-            parameters = [None for i in len(self.model.submodels)]
+            parameters = [None for submodel in self.model.submodels]
         
         self.submodel_deps = []
         for submodel,pars in zip(self.model.submodels,parameters):
             if pars is None:
-               try:
-                   func_args = inspect.getargspec(submodel.logpdf)[0]
-               except AttributeError:
-                   func_args = inspect.getargspec(submodel.logpmf)[0]
-               # Remove 'x' from this list, we only want the parameter names
-               func_args = [item for item in func_args if item is not 'x']
+                func_args = c.get_dist_args(submodel)
             else:
-               func_args = pars
+                func_args = pars
             self.submodel_deps += [func_args] 
-        #print(self.submodel_deps)
+        print('self.submodel_deps:', self.submodel_deps)
  
         if x==None:
            self.x = [None for i in range(self.model.N_submodels)]
@@ -314,7 +342,7 @@ class ParameterModel:
         # function needs.
         # Fortunately, this is stored in 'submodel_deps'
         args = []
-        print("In JointModel.get_pdf_args: parameters = ",parameters)
+        #print("In JointModel.get_pdf_args: parameters = ",parameters)
         for deps in self.submodel_deps:
             try:
                 pars = {p:parameters[p] for p in deps} # extract just the parameters that a given submodel needs
@@ -370,12 +398,12 @@ class ParameterModel:
            multivariate). This is the shape required by other routines
            in the ParameterModel class.
         """
-        print(null_parameters)
+        #print(null_parameters)
         if null_parameters!=None:
            args = self.get_pdf_args(null_parameters)
         else:
            args = {}
-        print(args)
+        #print("in simulate: args = ",args)
         self.x = self.model.rvs((Ntrials,Ndraws),args)
         return self.x     
 

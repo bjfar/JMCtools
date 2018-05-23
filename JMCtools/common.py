@@ -2,6 +2,7 @@
 
 import numpy as np
 import scipy.interpolate as spi
+import inspect
 
 # def apply_f(f,a):
 #     """Apply some function to 'bottom level' objects in a nested structure of lists,
@@ -131,9 +132,70 @@ def e_pval(samples,obs):
     # don't exist.
     s = np.sort(samples[np.isfinite(samples)])
     CDF = spi.interp1d([0]+list(s)+[1e99],[0]+list(eCDF(s))+[1])
-    for si in s:
-       print(si, CDF(si))
+    #for si in s:
+    #   print(si, CDF(si))
     print("obs:",obs)
     print("CDF(obs):",CDF(obs))
     print("pval(obs):",1-CDF(obs))
     return 1 - CDF(obs)
+
+def get_func_args(func):
+    """Inspect a function for its named arguments
+       (only returns ones that have no default value
+        set)"""
+    try:
+       argo = inspect.getfullargspec(func)
+       fargs = argo.args 
+       for arg in argo.kwonlyargs:
+          # Only add the kwonly arg if it doesn't have a default value provided
+          if arg not in argo.kwonlydefaults.keys():
+             fargs += [arg]
+    except AttributeError:
+       # Might be in Python 2. This will fail on some function signatures,
+       # but we can give it a whirl:
+       try:
+          fargs = inspect.getargspec(func)[0]
+       except TypeError:
+          print("Could not parse the arguments of the supplied function! You\
+ can usually instead supply them as an explicit list to whatever object has\
+ called this routine.")
+          raise
+    
+    if len(fargs)==0:
+       raise ValueError("Failed to find any arguments for the supplied\
+ function! It may not have explicit arguments (i.e. it may use *args, \
+ **kwargs instead, or just have no arguments). If you have received this\
+ error while using an object such as TransDist then you may need to\
+ supply an explict argument list to be used (please check where\
+ this function was called from; the calling object should provide a way to\
+ supply such a list, for example the 'func_args' argument can be used in the\
+ TransDist constructor.")
+    return fargs 
+
+def get_dist_args(dist):
+    """Probe a scipy.stats distribution (or JMCtools distribution) for its
+       required arguments"""
+    has_args = False
+    try:
+        fargs = dist.args
+        has_args = True
+    except AttributeError:
+        has_args = False
+    if not has_args:
+        try:
+            func_args = get_func_args(dist.logpdf)
+        except AttributeError:
+            func_args = get_func_args(dist.logpmf)
+        # Remove 'x' from this list, we only want the parameter names
+        reject_list = ['x','self']
+        fargs = [item for item in func_args if item not in reject_list]
+        if len(fargs)==0:
+            raise ValueError("Failed to find any arguments for the supplied\
+ distribution after inspecting its functions! They may not have explicit\
+ arguments (i.e. they may use *args, **kwargs). If that is the case then you\
+ will need to supply an explict argument list to be used (please check where\
+ this function was called from; the calling object should provide a way to\
+ supply such a list, for example the 'func_args' argument can be used in the\
+ TransDist constructor.")
+    return fargs
+

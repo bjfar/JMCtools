@@ -5,7 +5,9 @@ import scipy.stats as sps
 from scipy.stats import rv_continuous
 import scipy.optimize as spo
 from scipy.integrate import quad
+import inspect
 import JMCtools.common as c
+import JMCtools.six as six # Python 2 & 3 compatibility tools
 
 class ListModel:
     """
@@ -42,7 +44,8 @@ class ListModel:
                 d = 1
             self.dims += [d]
             self.submodels += [m]
-
+        #print('self.dims:',self.dims)
+ 
     def _check_parameters(self, parameters=None):
         """Validate and return parameters
            Note that this is just the parameters of *this* object,
@@ -211,7 +214,7 @@ class PowerMixtureModel(rv_continuous):
         # from the distribution at the same time. So these functions should be semi-combined.
         return None
     
-class JointModel(ListModel):
+class JointDist(ListModel):
     """Class for constructing a joint pdf from independent pdfs, which can be sampled from.
        Has a feature for overriding the pdf of submodels so that, for example, portions of
        the joint pdf may be profiled or marginalised analytically to speed up fitting routines.
@@ -220,7 +223,7 @@ class JointModel(ListModel):
         # Need some weird stuff for Python 2 and 3 compatibility
         if issubclass(ListModel, object):
             # new style class, call super
-            super(JointModel, self).__init__(submodels,parameters,*args,**kwargs)
+            super(JointDist, self).__init__(submodels,parameters,*args,**kwargs)
         else:
             # old style class, call __init__ manually
             ListModel.__init__(self,submodels,parameters,*args,**kwargs)
@@ -235,17 +238,17 @@ class JointModel(ListModel):
      
 
     def split(self,selection):
-        """Create a JointModel which is a subset of this one, by splitting off the submodels 
+        """Create a JointDist which is a subset of this one, by splitting off the submodels 
            with the listed indices into a separate object"""
         if self.frozen:
-            out = JointModel([(self.submodels[i],self.dims[i]) for i in selection],
+            out = JointDist([(self.submodels[i],self.dims[i]) for i in selection],
                           parameters = [self.parameters[i] for i in selection],
                           frozen = True,
                           submodel_logpdf_replacements = [self.submodel_logpdf_replacements[i] for i in selection]
                          )
         else:
             # If not frozen, cannot supply parameters
-            out = JointModel([(self.submodels[i],self.dims[i]) for i in selection],
+            out = JointDist([(self.submodels[i],self.dims[i]) for i in selection],
                           frozen = False,
                           submodel_logpdf_replacements = [self.submodel_logpdf_replacements[i] for i in selection]
                          )
@@ -259,7 +262,7 @@ class JointModel(ListModel):
             raise ValueError("This distribution is already frozen! You cannot re-freeze it with different parameters")
         parameters = self._check_parameters(parameters)
         frozen_submodels = self._freeze_submodels(parameters)
-        return JointModel(frozen_submodels, parameters, self.submodel_logpdf_replacements) # Copy of this object, but frozen
+        return JointDist(frozen_submodels, parameters, self.submodel_logpdf_replacements) # Copy of this object, but frozen
 
     def submodel_logpdf(self,i,x,parameters={}):
         """Call logpdf (or logpmf) of a submodel, automatically detecting where parameters
@@ -280,7 +283,7 @@ class JointModel(ListModel):
     def submodel_pdf(self,i,x,parameters=None):
         return np.exp(self.submodel_logpdf(i,x,parameters))
 
-    def pdf(self, x_in, parameters=None):
+    def pdf(self, x, parameters=None):
         """Provide data to pdf as a list of arrays of same
            length as the submodels list. Each array will be
            passed straight to those submodels, so broadcasting
@@ -302,14 +305,14 @@ class JointModel(ListModel):
         # Validate the supplied parameters (if any)
         parameters = self._check_parameters(parameters)
         #print("parameters:",parameters) 
-        x = self.split_data(x_in) # Convert data array into list of data for each submodel
+        x_split = self.split_data(x) # Convert data array into list of data for each submodel
         # Use first submodel to determine pdf array output shape
         if self.submodel_logpdf_replacements[0]!=None:
-            _pdf = np.exp(self.submodel_logpdf_replacements[0](x[0],**parameters[0]))
+            _pdf = np.exp(self.submodel_logpdf_replacements[0](x_split[0],**parameters[0]))
         else:
-            _pdf = self.submodel_pdf(0,x[0],parameters[0])
+            _pdf = self.submodel_pdf(0,x_split[0],parameters[0])
         # Loop over rest of the submodels
-        for i,(xi,submodel,alt_logpdf,pars) in enumerate(zip(x[1:],self.submodels[1:],self.submodel_logpdf_replacements[1:],parameters[1:])):
+        for i,(xi,submodel,alt_logpdf,pars) in enumerate(zip(x_split[1:],self.submodels[1:],self.submodel_logpdf_replacements[1:],parameters[1:])):
             #print(pars)
             if alt_logpdf!=None:
                 _pdf *= np.exp(alt_logpdf(xi,**pars))
@@ -317,12 +320,12 @@ class JointModel(ListModel):
                 _pdf *= self.submodel_pdf(i+1,xi,pars)
         return _pdf
     
-    def logpdf(self, x_in, parameters=None):
+    def logpdf(self, x, parameters=None):
         """As above but for logpdf
         """
         parameters = self._check_parameters(parameters)
        #print("x_in.shape:", x_in.shape)
-        x = self.split_data(np.atleast_2d(x_in)) # Convert data array into list of data for each submodel
+        x_split = self.split_data(np.atleast_2d(x)) # Convert data array into list of data for each submodel
         #for i,x_i in enumerate(x):
         #    #print("x_{0}.shape: {1}".format(i,x_i.shape))
         #    #print("self.dims[{0}]: {1}".format(i,self.dims[i]))
@@ -345,12 +348,12 @@ class JointModel(ListModel):
         #print("len(self.submodels):",len(self.submodels))
         # Use first submodel to determine pdf array output shape
         if self.submodel_logpdf_replacements[0]!=None:
-            _logpdf = self.submodel_logpdf_replacements[0](x[0],**parameters[0])
+            _logpdf = self.submodel_logpdf_replacements[0](x_split[0],**parameters[0])
         else:
-            _logpdf = self.submodel_logpdf(0,x[0],parameters[0])
+            _logpdf = self.submodel_logpdf(0,x_split[0],parameters[0])
         # Loop over rest of the submodels
         if len(self.submodels)>1:
-            for i,(xi,submodel,alt_logpdf,pars) in enumerate(zip(x[1:],self.submodels[1:],self.submodel_logpdf_replacements[1:],parameters[1:])):
+            for i,(xi,submodel,alt_logpdf,pars) in enumerate(zip(x_split[1:],self.submodels[1:],self.submodel_logpdf_replacements[1:],parameters[1:])):
                 #print('submodel:',i+1)
                 #print('pars:',pars)
                 #print('xi:',xi)
@@ -383,6 +386,7 @@ class JointModel(ListModel):
         _rvs = []
         for i,(submodel, pars) in enumerate(zip(self.submodels,parameters)):
             try:
+               #print("in JointDist.rvs, submodel[{0}], pars={1}".format(i,pars)) 
                _rvs += [submodel.rvs(size=size,**pars)]
             except TypeError as e:
                # Python 3 only
@@ -413,7 +417,12 @@ class TransDist:
        Todo: implement frozen-ness
     """
     
-    def __init__(self,orig_dist,transform_func,renaming_map=None):
+    def null_transform(self,**kwargs):
+        """Default null parameter transformation. Useful if only a simple
+           renaming is required, which can be done via 'renaming_map'"""
+        return kwargs
+
+    def __init__(self,orig_dist,transform_func=None,renaming_map=None,func_args=None):
         """renaming_map should be a list of string instructions
            like
             ['a -> b', 'x -> y']
@@ -425,15 +434,57 @@ class TransDist:
         renaming = {}
         if renaming_map is not None:
             for item in renaming_map:
-                key,val = item.split(' -> ')
-                renaming[key] = val
+                try:
+                   key,val = item.split(' -> ')
+                   renaming[key] = val
+                except ValueError:
+                   print("Failed to parse parameter remapping instruction (Did you remember to pass these instructions as a list?)")
+                   raise
         self.renaming_map = renaming
+        # Try to figure out what arguments we need, so we can
+        # tell other objects when they ask (they can't inspect
+        # the logpdf function directly since it takes arbitrary
+        # arguments!)
+        if func_args is None:
+           if self.transform_func is None:
+               # No transform func supplied, so we are using the Null transformation
+               self.transform_func = self.null_transform
+               # Inspect the underlying distribution object for parameters
+               fargs = c.get_dist_args(self.orig_dist)
+           else:
+               # Inspect the transformation function for arguments
+               fargs = c.get_func_args(self.transform_func)
+           # Performing any renaming requested by renaming_map
+           self.args = []
+           for arg in fargs:
+               if arg in self.renaming_map.values():
+                   key = [k for k,val in self.renaming_map.items() if val==arg][0] # get first match
+                   self.args += [key]
+               else:
+                   self.args += [arg]
+        else:
+           self.args = func_args
+        # Sanity check
+        if len(self.args)==0:
+           raise ValueError("Failed to find any arguments for this\
+ distribution! You may need to supply them explictly via the 'func_args'\
+ argument. Debug information:\n\
+    orig_dist      = {0}\n\
+    transform_func = {1}\n\
+    renaming_map   = {2}\n\
+    func_args      = {3}\n\
+".format(orig_dist,transform_func,renaming_map,func_args))
+        #print("self.args:", self.args)
 
     def rvs(self, size, **parameters):
         """Generate random samples from the distribution"""
         orig_pars = self.get_orig_args(**parameters)
-        return self.orig_dist.rvs(size=size,**orig_pars)
-
+        try:
+            samples = self.orig_dist.rvs(size=size,**orig_pars)
+        except TypeError:
+            six.reraise(TypeError,TypeError("Failed to run 'rvs' member function of distribution {0}, using arguments {1} (which are derived from {2} using function {3}).".format(self.orig_dist, orig_pars, parameters, self.transform_func)))
+        return samples
+    
     def get_orig_args(self,**parameters):
         """Compute parameters for the original distribution using the
            reparameterisation"""
@@ -444,6 +495,9 @@ class TransDist:
                 renamed_parameters[self.renaming_map[key]] = val
             else:
                 renamed_parameters[key] = val
+        #print('input parameters:', parameters)
+        #print('self.renaming_map:',self.renaming_map)
+        #print('get_orig_args returns:', renamed_parameters)
         return self.transform_func(**renamed_parameters)
 
     # Which of logpmf or logpdf actually works will depend

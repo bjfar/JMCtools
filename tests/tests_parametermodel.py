@@ -45,6 +45,9 @@ def pars2_B(mu2):
 def pars2_C(mu3):
     return {"loc":mu3, "scale":1}
 
+def pars(mu):
+    return {"loc":mu, "scale":1}
+
 # # Construct transformed distributions
 # submodels = [(jtd.TransDist(sps.norm,pars2_A),['mu1']),
 #              (jtd.TransDist(sps.norm,pars2_B),['mu2']),
@@ -60,10 +63,20 @@ def pars2_C(mu3):
 # parmodel = jtm.ParameterModel(jointmodel,[['mu1'],['mu2'],['mu3']])
 # 
 # Or like this:
-parmodel = jtm.ParameterModel([jtd.TransDist(sps.norm,pars2_A),
-                               jtd.TransDist(sps.norm,pars2_B),
-                               jtd.TransDist(sps.norm,pars2_C)]
-                              ,[['mu1'],['mu2'],['mu3']])
+#parmodel = jtm.ParameterModel([jtd.TransDist(sps.norm,pars2_A),
+#                               jtd.TransDist(sps.norm,pars2_B),
+#                               jtd.TransDist(sps.norm,pars2_C)]
+#                              ,[['mu1'],['mu2'],['mu3']])
+# Or like this, utilising manual parameter name remapping:
+parmodel = jtm.ParameterModel([(sps.norm,pars,['mu1 -> mu']),
+                               (sps.norm,pars,['mu2 -> mu']),
+                               (sps.norm,pars,['mu3 -> mu'])])
+# Or just like this:
+#parmodel = jtm.ParameterModel([(sps.norm,pars2_A),
+#                               (sps.norm,pars2_B),
+#                               (sps.norm,pars2_C)])
+# Leaving the parameters to be inferred automagically
+
 
 # Define the null hypothesis
 null_parameters = {'mu1':0, 'mu2':0, 'mu3':0}
