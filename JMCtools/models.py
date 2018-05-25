@@ -363,6 +363,17 @@ class ParameterModel:
         #print("pdf_args: ", self.get_pdf_args(parameters))
         return self.model.logpdf(x,self.get_pdf_args(parameters))
 
+    def logpdf_list(self,parameters,x=None):
+        """Gets logpdfs of all submodels of self.model as a list
+           Mostly for debugging purposes."""
+        if x is None:
+           x = self.x # Use pre-generated data if none provided
+        else:
+           self.validate_data(x)
+        #print("pdf_args: ", self.get_pdf_args(parameters))
+        return self.model.logpdf_list(x,self.get_pdf_args(parameters))
+
+
     def find_submodels_which_depend_on(self,parameter):
         """Return the indices of the submodels which depend on 'parameter'"""
         matches = set([])

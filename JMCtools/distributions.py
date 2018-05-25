@@ -323,6 +323,15 @@ class JointDist(ListModel):
     def logpdf(self, x, parameters=None):
         """As above but for logpdf
         """
+        _logpdf_list = self.logpdf_list(x,parameters)
+        _logpdf = 0
+        for l in _logpdf_list:
+            _logpdf += l
+        return _logpdf
+ 
+    def logpdf_list(self, x, parameters=None):
+        """list of logpdfs of all submodels
+        """
         parameters = self._check_parameters(parameters)
        #print("x_in.shape:", x_in.shape)
         x_split = self.split_data(np.atleast_2d(x)) # Convert data array into list of data for each submodel
@@ -347,10 +356,11 @@ class JointDist(ListModel):
         #print("JointModel.logpdf: structure(x) = ", c.get_data_structure(x))
         #print("len(self.submodels):",len(self.submodels))
         # Use first submodel to determine pdf array output shape
+        _logpdf = []
         if self.submodel_logpdf_replacements[0]!=None:
-            _logpdf = self.submodel_logpdf_replacements[0](x_split[0],**parameters[0])
+            _logpdf += [self.submodel_logpdf_replacements[0](x_split[0],**parameters[0])]
         else:
-            _logpdf = self.submodel_logpdf(0,x_split[0],parameters[0])
+            _logpdf += [self.submodel_logpdf(0,x_split[0],parameters[0])]
         # Loop over rest of the submodels
         if len(self.submodels)>1:
             for i,(xi,submodel,alt_logpdf,pars) in enumerate(zip(x_split[1:],self.submodels[1:],self.submodel_logpdf_replacements[1:],parameters[1:])):
@@ -358,9 +368,9 @@ class JointDist(ListModel):
                 #print('pars:',pars)
                 #print('xi:',xi)
                 if alt_logpdf!=None:
-                    _logpdf += alt_logpdf(xi,**pars)
+                    _logpdf += [alt_logpdf(xi,**pars)]
                 else:
-                    _logpdf += self.submodel_logpdf(i+1,xi,pars)
+                    _logpdf += [self.submodel_logpdf(i+1,xi,pars)]
         #print("_logpdf.shape:",_logpdf.shape)
         return _logpdf
     
