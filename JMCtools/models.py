@@ -7,7 +7,7 @@ import concurrent.futures
 import itertools
 import time
 import sys
-#from sys import stdout
+import JMCtools.six as six # Python 2 & 3 compatibility tools
 
 # Hacky thing to get a decent traceback from concurrent processing in Python 2.x
 # Credit: https://stackoverflow.com/a/29357032/1447953
@@ -221,7 +221,7 @@ class ParameterModel:
     def __init__(self,jointmodel,parameters=None,x=None,fix={}):
         iterable = True
         try:
-            print("Testing if iterable")
+            #print("Testing if iterable")
             # We can allow a list of submodels to be supplied rather than a pre-constructed jointmodel
             # Both can work.
             iter(jointmodel)
@@ -233,13 +233,13 @@ class ParameterModel:
             # can also deal with that automatically:
             transmodels = []
             try:
-               print("Testing if list of pairs")
+               #print("Testing if list of pairs")
                for dist, func in jointmodel:
                    transmodels += [jtd.TransDist(dist,func)]
                self.model = jtd.JointDist(transmodels)
             except ValueError:
                try:
-                   print("Testing if list of triples")
+                   #print("Testing if list of triples")
                    for dist, func, remap in jointmodel:
                        transmodels += [jtd.TransDist(dist,func,remap)]
                    self.model = jtd.JointDist(transmodels)
@@ -250,7 +250,7 @@ class ParameterModel:
                 # Ok items in list are not iterable: assume it is already a good argument for the JointModel constructor
                self.model = jtd.JointDist(jointmodel)
         else:
-            print("Assigning directly to self.model") 
+            #print("Assigning directly to self.model") 
             # Ok not a list or something, assume it is already JointModel object    
             self.model = jointmodel
 
@@ -269,7 +269,7 @@ class ParameterModel:
             else:
                 func_args = pars
             self.submodel_deps += [func_args] 
-        print('self.submodel_deps:', self.submodel_deps)
+        #print('self.submodel_deps:', self.submodel_deps)
  
         if x==None:
            self.x = [None for i in range(self.model.N_submodels)]
@@ -330,7 +330,7 @@ class ParameterModel:
            final_block_list.add(Block.fromBlock(block,block_jointmodel,block_submodel_deps))
 
         self.blocks = final_block_list
-        print(self.blocks)
+        #print(self.blocks)
 
     def get_pdf_args(self,parameters):
         """Obtain the argument list required to evaluate the joint
@@ -706,7 +706,11 @@ class ParameterModel:
         # Construct objective function
         ofunc = Objective(block, block_x)
         # Minimise it!
-        m=iminuit.Minuit(ofunc,**block_options)
+        try:
+            m=iminuit.Minuit(ofunc,**block_options)
+        except RuntimeError:
+            six.reraise(RuntimeError,RuntimeError("Failed to run Minuit minimisation for {0} using options {1}".format(ofunc, block_options)))
+
         min_struct, par_struct_list = m.migrad(precision = 1e-5)
         if not min_struct.is_valid:
             msg = ""
