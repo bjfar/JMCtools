@@ -441,6 +441,7 @@ class TransDist:
         """
         self.transform_func = transform_func
         self.orig_dist = orig_dist
+        self._cust_logpdf = None
         renaming = {}
         if renaming_map is not None:
             for item in renaming_map:
@@ -484,7 +485,7 @@ class TransDist:
     renaming_map   = {2}\n\
     func_args      = {3}\n\
 ".format(orig_dist,transform_func,renaming_map,func_args))
-        #print("self.args:", self.args)
+        print("self.args:", self.args)
 
     def rvs(self, size, **parameters):
         """Generate random samples from the distribution"""
@@ -508,14 +509,30 @@ class TransDist:
         #print('input parameters:', parameters)
         #print('self.renaming_map:',self.renaming_map)
         #print('get_orig_args returns:', renamed_parameters)
-        return self.transform_func(**renamed_parameters)
+        r = self.transform_func(**renamed_parameters)
+        #print('transformed args:',r)
+        return r
+       
+    def set_logpdf(self,logpdf):
+        """Replace logpdf (and/or logpmf) of origdist with a custom function"""
+        self._cust_logpdf = logpdf
 
     # Which of logpmf or logpdf actually works will depend
     # on which one exists in the underlying distribution
     def logpmf(self, x, **parameters):
         orig_pars = self.get_orig_args(**parameters)
-        return self.orig_dist.logpmf(x,**orig_pars) 
+        if self._cust_logpdf is not None:
+            f = self._cust_logpdf
+        else:
+            f = self.orig_dist.logpmf
+        return f(x,**orig_pars) 
 
     def logpdf(self, x, **parameters):
         orig_pars = self.get_orig_args(**parameters)
-        return self.orig_dist.logpdf(x,**orig_pars)
+        if self._cust_logpdf is not None:
+            f = self._cust_logpdf
+        else:
+            f = self.orig_dist.logpdf
+        return f(x,**orig_pars) 
+
+
