@@ -131,12 +131,14 @@ def e_pval(samples,obs):
     # I think it is best if we just remove them and pretend they
     # don't exist.
     s = np.sort(samples[np.isfinite(samples)])
-    CDF = spi.interp1d([0]+list(s)+[1e99],[0]+list(eCDF(s))+[1])
+    #print("s:",s)
+    #print("obs:", obs)
+    CDF = spi.interp1d([-1e99]+list(s)+[1e99],[0]+list(eCDF(s))+[1])
     #for si in s:
     #   print(si, CDF(si))
-    print("obs:",obs)
-    print("CDF(obs):",CDF(obs))
-    print("pval(obs):",1-CDF(obs))
+    #print("obs:",obs)
+    #print("CDF(obs):",CDF(obs))
+    #print("pval(obs):",1-CDF(obs))
     return 1 - CDF(obs)
 
 def get_func_args(func):
