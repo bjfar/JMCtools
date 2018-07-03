@@ -121,7 +121,7 @@ def eCDF(x):
     """Get empirical CDF of some samples"""
     return np.arange(1, len(x)+1)/float(len(x))
 
-def e_pval(samples,obs):
+def e_pval(samples,obs,reverse=False):
     """Compute an empirical p-value based on simulated test-statistic values"""
     # Better sort the samples into ascending order first!
     # Note that sorting is along *last* axis by default! Probably only want
@@ -130,9 +130,12 @@ def e_pval(samples,obs):
     # One problem: we have to decide how to treat NaNs.
     # I think it is best if we just remove them and pretend they
     # don't exist.
-    s = np.sort(samples[np.isfinite(samples)])
+    if reverse:
+        s = np.sort(samples[np.isfinite(samples)])[::-1] 
+    else:
+        s = np.sort(samples[np.isfinite(samples)])
     #print("s:",s)
-    #print("obs:", obs)
+    print("obs:", obs)
     CDF = spi.interp1d([-1e99]+list(s)+[1e99],[0]+list(eCDF(s))+[1])
     #for si in s:
     #   print(si, CDF(si))

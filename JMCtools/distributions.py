@@ -485,7 +485,7 @@ class TransDist:
     renaming_map   = {2}\n\
     func_args      = {3}\n\
 ".format(orig_dist,transform_func,renaming_map,func_args))
-        print("self.args:", self.args)
+        #print("self.args:", self.args)
 
     def rvs(self, size, **parameters):
         """Generate random samples from the distribution"""

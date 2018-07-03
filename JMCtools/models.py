@@ -684,6 +684,7 @@ class ParameterModel:
   
         # We need to filter out the options related to any parameters
         # that don't feature in this block.
+        #print(   "all_parameters:", self.parameters)
         all_parameters = set(self.parameters)
         block_parameters = set(block.deps)
         non_block_parameters = all_parameters - block_parameters
@@ -691,16 +692,19 @@ class ParameterModel:
         # Will only use these if the user didn't provide them
         block_options = {'pedantic': False, 'print_level': -1}
         for key,val in options.items():
-            words = key.split("_")
-            if words[0] == 'error' or words[0] == 'fix':
-               varname = '_'.join(words[1:])
-               if varname in block_parameters:
-                  block_options[key] = val # copy the option if it is the step size or 'fix' option for a block parameter
-            elif key not in non_block_parameters:
-                block_options[key] = val # copy the option if it is not a non-block parameter
-        #print("block_parameters:", block_parameters)
-        #print("non_block_parameters:", non_block_parameters)
-        #print("block_options:", block_options)   
+            if key in block_parameters:
+                block_options[key] = val # copy the option if it a (starting or fixed) value for a block parameter
+            else:
+                # check for other sorts of allowed minuit options
+                # TODO: update to complete list
+                words = key.split("_")
+                if words[0] == 'error' or words[0] == 'fix':
+                    varname = '_'.join(words[1:])
+                    if varname in block_parameters:
+                        block_options[key] = val # copy the option if it is the step size or 'fix' option for a block parameter
+        #print("   block_parameters:", block_parameters)
+        #print("   non_block_parameters:", non_block_parameters)
+        #print("   block_options:", block_options)   
 
         maxpars = {}
         # Construct objective function
