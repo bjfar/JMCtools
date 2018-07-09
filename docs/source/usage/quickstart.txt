@@ -13,6 +13,10 @@ the following:
    samples/trials, in parallel)
 5. :ref:`build_test_stats` 
 
+Getting more advanced, we can further combine joint distributions into :ref:`experiments`,
+define test statistics to compute in :ref:`analysis` objects, and loop
+over the whole procedure to compute :ref:`trial_corrections`.
+
 A fast introduction to the package, then, is to see an example of this in action. So let's get to it!
 
 .. _combine_into_joint:
