@@ -45,6 +45,7 @@ class ListModel:
             self.dims += [d]
             self.submodels += [m]
         #print('self.dims:',self.dims)
+        #print('self.submodels:',self.submodels)
  
     def _check_parameters(self, parameters=None):
         """Validate and return parameters
