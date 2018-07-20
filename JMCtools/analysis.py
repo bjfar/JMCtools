@@ -8,6 +8,7 @@ import scipy.stats as sps
 from JMCtools.experiment import Experiment
 from JMCtools.plotting import plot_teststat
 import pandas as pd
+import sys
 
 # Don't let pandas do its weird line-wrapping when printing; just want one big table for output.
 pd.set_option('display.expand_frame_repr', False)
@@ -89,8 +90,10 @@ class Results:
 
 class Analysis:
 
-    def __init__(self,experiments,tag,run_diagnostics=False,make_plots=True):
+    def __init__(self,experiments,tag,run_diagnostics=False,make_plots=True,Nproc=3):
         self.experiments = experiments
+        for e in self.experiments:
+            e.Nproc = Nproc # set number of processes to use for parallelisation of fits
         self.monster = Experiment.fromExperimentList(self.experiments)
         self.tag = tag # For naming output
   
@@ -159,7 +162,7 @@ class Analysis:
 
             # Do fit!
             e_test_pars = test_parameters[e.name] # replace this with e.g. prediction from MSSM best fit
-            print("Performing 'gof' test for experiment {0}, using null hypothesis {1}".format(e.name,e_test_pars))
+            print("Performing 'gof' test for experiment {0}, using null hypothesis {1}".format(e.name,e_test_pars),file=sys.stderr)
             model, LLR, LLR_obs, apval, epval, gofDOF = e.do_gof_test(e_test_pars,samples)
             # Save LLR for combining (only works if experiments have no common parameters)
             #print("e.name:{0}, LLR_obs:{1}, gofDOF: {2}".format(e.name,LLR_obs,gofDOF))
@@ -175,7 +178,7 @@ class Analysis:
             # Plot! (only the first simulated 'observed' value, if more than one) 
             if self.make_plots:
                 if apval is None:
-                    print("p-value was None; test may be degenerate (e.g. if zero signal predicted), or just buggy. Skipping plot.")
+                    print("p-value was None; test may be degenerate (e.g. if zero signal predicted), or just buggy. Skipping plot.",file=sys.stderr)
                     quit()
                 else:
                     fig= plt.figure(figsize=(6,4))
@@ -236,7 +239,7 @@ class Analysis:
             observed = genNone()
         for j,(e,samples,obs) in enumerate(zip(self.experiments_for_test('musb'),pseudodata,observed)):
             e_test_pars = test_parameters[e.name] # replace this with e.g. prediction from MSSM best fit
-            print("Performing 'musb' test for experiment {0}, using 'signal shape' {1}".format(e.name, e_test_pars)) 
+            print("Performing 'musb' test for experiment {0}, using 'signal shape' {1}".format(e.name, e_test_pars),file=sys.stderr) 
             model, musb_LLR, musb_LLR_obs, musb_apval, musb_epval, LLRA, Eq, Varq = e.do_musb_test(e_test_pars,samples,nullmu,observed=obs)
             if musb_LLR is not None:
                LLR_monster_mmusb += musb_LLR
@@ -252,7 +255,7 @@ class Analysis:
             # Plot! (only the first simulated 'observed' value, if more than one)
             if self.make_plots:
                 if musb_apval is None:
-                    print("p-value was None; test may be degenerate (e.g. if zero signal predicted), or just buggy. Skipping plot.")
+                    print("p-value was None; test may be degenerate (e.g. if zero signal predicted), or just buggy. Skipping plot.",file=sys.stderr)
                 else:
                     fig= plt.figure(figsize=(6,4))
                     ax = fig.add_subplot(111)
@@ -313,7 +316,7 @@ class Analysis:
         for j,(e,b_samples,sb_samples) in enumerate(zip(self.experiments_for_test('musb'),b_pseudodata,sb_pseudodata)):
             e_test_pars = test_parameters[e.name] # replace this with e.g. prediction from MSSM best fit
 
-            print("Performing 'musb' test (mu=1) for experiment {0}, using 'signal shape' {1}".format(e.name, e_test_pars)) 
+            print("Performing 'musb' test (mu=1) for experiment {0}, using 'signal shape' {1}".format(e.name, e_test_pars),file=sys.stderr) 
             model, musb_LLRsb, musb_LLR_obs, musb_apvalsb, musb_epvalsb, LLRAsb, Eqsb, Varqsb = e.do_musb_test(e_test_pars,sb_samples,nullmu=1)
             if musb_LLRsb is not None:
                LLRsb_monster_mmusb += musb_LLRsb
@@ -326,7 +329,7 @@ class Analysis:
 
             test_results += [ [e.name, "musb_mu=1", vflat(musb_apvalsb), vflat(musb_epvalsb)] ]
 
-            print("Performing 'musb' test (mu=0) for experiment {0}, using 'signal shape' {1}".format(e.name, e_test_pars)) 
+            print("Performing 'musb' test (mu=0) for experiment {0}, using 'signal shape' {1}".format(e.name, e_test_pars),file=sys.stderr) 
             model, musb_LLRb, musb_LLR_obs, musb_apvalb, musb_epvalb, LLRAb, Eqb, Varqb = e.do_musb_test(e_test_pars,b_samples,nullmu=0)
             if musb_LLRb is not None:
                LLRb_monster_mmusb += musb_LLRb

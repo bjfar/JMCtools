@@ -10,6 +10,7 @@ import scipy.stats as sps
 from functools import partial
 import matplotlib.pyplot as plt
 import six
+import sys
 
 def diag_MLEs(e, Lmax0, pmax0, seeds0, Lmax, pmax, seeds, samples, tag):
     """Very simple diagnositic function which simply plots the
@@ -86,12 +87,13 @@ def mu_parameter_mapping(mu,scale_with_mu,**kwargs):
     return out_pars
  
 class Experiment:
-    def __init__(self,name,joint_pdf,observed,DOF):
+    def __init__(self,name,joint_pdf,observed,DOF,Nproc=3):
         """Basic information:
            name
            joint pdf
            observed data
            degrees of freedom (of general model, i.e. used in gof test)
+	   Nproc - Number of mpi processes to use for parallelising repeated fits
         """
         self.name = name
         self.joint_pdf = joint_pdf
@@ -105,6 +107,7 @@ class Experiment:
         self.DOF = DOF
         self.tests = {}
         self.general_model = jtm.ParameterModel(self.joint_pdf)
+        self.Nproc = Nproc
 
     @classmethod  
     def fromExperimentList(cls,experiments,name="Monster",common_pars=[]):
@@ -556,7 +559,7 @@ class Experiment:
         #   nuis_MLEs[key] = np.atleast_1d(nuis_MLEs[key]) # Fix up shape
         #Lmax0, pmax0, Lmax, pmax = self.get_LLR(model,'musb',nA,nuis_MLEs,nuis_MLEs)
         #LLRA = -2*(Lmax0 - Lmax)
-        print("Fitting with Asimov data")
+        print("Fitting with Asimov data",file=sys.stderr)
         LLRA, LLRA_obs = self.get_LLR_all(model,'musb',nA,signal=nominal_signal,LLR_must_be_positive=False,observed=observed)
  
         apval, epval, Eq, Varq = self.sb_pval(LLR,LLR_obs,LLRA,nullmu)
@@ -575,7 +578,7 @@ class Experiment:
         """Compute log-likelihood for input parameters/options/samples"""
         test_mode = False # Compute both numerical and exact results, for comparison. Only does anything if exact=True
         if exact:
-            print("Seeds are exact MLEs; skipping minimisation")
+            print("Seeds are exact MLEs; skipping minimisation",file=sys.stderr)
             pmax_exact = seeds
             pmax_exact.update(fixed_pars)
             # need to loop over parameters, otherwise it will automatically evaluate
@@ -585,7 +588,7 @@ class Experiment:
             Lmax_exact = np.zeros(Nsamples)
             for i,X in enumerate(samples):
                 if i % 50 == 0:
-                    print("\r","Processed {0} of {1} samples...           ".format(i,Nsamples), end="")
+                    print("\r","Processed {0} of {1} samples...           ".format(i,Nsamples), end="", file=sys.stderr)
                 pars = {}
                 for par, val in pmax_exact.items():
                     try:
@@ -628,7 +631,7 @@ class Experiment:
             pmax = pmax_fit                    
         return Lmax, pmax
 
-    def get_LLR(self,model,test,observed_data,seeds0,seeds,nexact=True,fexact=True,extra_null_opt={},signal={}):
+    def get_LLR(self,model,test,observed_data,seeds0,seeds,nexact=True,fexact=True,extra_null_opt={},signal={},Nproc=3):
         """Get log-likelihood ratio for selected test, using supplied data and non-fixed parameters"""
         # Get options for fitting routines
         null_opt = self.tests[test].null_options
@@ -660,10 +663,10 @@ class Experiment:
 
         # Manually force numerical minimization for testing
         #fexact, nexact = False, False
-        print("Fitting null hypothesis...")
-        Lmax0, pmax0 = self.compute_LL(model,observed_data,null_fixed_pars,null_opt,seeds0,nexact)
-        print("Fitting alternate hypothesis...")
-        Lmax,  pmax  = self.compute_LL(model,observed_data,full_fixed_pars,full_opt,seeds,fexact)
+        print("Fitting null hypothesis...",file=sys.stderr)
+        Lmax0, pmax0 = self.compute_LL(model,observed_data,null_fixed_pars,null_opt,seeds0,nexact,Nproc)
+        print("Fitting alternate hypothesis...",file=sys.stderr)
+        Lmax,  pmax  = self.compute_LL(model,observed_data,full_fixed_pars,full_opt,seeds,fexact,Nproc)
   
         return Lmax0, pmax0, Lmax, pmax
 
@@ -672,7 +675,7 @@ class Experiment:
            Uses seed functions defined as part of test to help fit (or directly compute) MLEs for parameters.
            Therefore needs 'signal' parameters to give to this seed function."""
 
-        print("Fitting experiment {0} in '{1}' test".format(self.name,test))
+        print("Fitting experiment {0} in '{1}' test".format(self.name,test),file=sys.stderr)
 
         # Get seed calcuation functions for fitting routines, tailored to simulated (or any) data
         # Come from definitions in tests
@@ -718,9 +721,9 @@ class Experiment:
            #print("pmax",pmax)
  
            # Run diagnostics functions for this experiment + test
-           print("Running extra diagnostic functions")
            dfuncs = self.tests[test].diagnostics
            if dfuncs:
+               print("Running extra diagnostic functions",file=sys.stderr)
                for f in dfuncs:
                    f(self, Lmax0, pmax0, seeds0, Lmax, pmax, seeds, samples)
  
@@ -753,11 +756,11 @@ class Experiment:
            LLR = None
 
         # Also fit the observed data so we can compute its p-value 
-        print("Fitting with observed data...")
+        print("Fitting with observed data...",file=sys.stderr)
         if observed is None:
             odata = self.observed_data
         else:
-            print("Overriding observed data with supplied values...")
+            print("Overriding observed data with supplied values...",file=sys.stderr)
             odata = observed
         #print("odata:", odata)
         seeds0_obs = nseeds(odata,signal) # null hypothesis fits depend on signal parameters
