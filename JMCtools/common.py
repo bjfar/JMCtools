@@ -135,7 +135,7 @@ def e_pval(samples,obs,reverse=False):
     else:
         s = np.sort(samples[np.isfinite(samples)])
     #print("s:",s)
-    print("obs:", obs)
+    #print("obs:", obs)
     CDF = spi.interp1d([-1e99]+list(s)+[1e99],[0]+list(eCDF(s))+[1])
     #for si in s:
     #   print(si, CDF(si))
@@ -204,3 +204,16 @@ def get_dist_args(dist):
  TransDist constructor.")
     return fargs
 
+def search_dicts(key,*dicts):
+    """Search multiple dictionaries for a key, returning the first result found
+       Priority given to dicts earlier in the argument list"""
+    r = None
+    for d in dicts:
+        try:
+            r = d[key]
+            break
+        except KeyError:
+            continue
+    if r is None:
+        raise KeyError("Could not find key {0} in any of the dictionaries supplied!".format(key))
+    return r
