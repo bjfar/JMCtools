@@ -466,7 +466,7 @@ class Experiment:
         return apval, epval
 
 
-    def do_gof_test(self,test_parameters,samples=None):
+    def do_gof_test(self,test_parameters,samples=None,observed=None):
         model = self.general_model
         # Test parameters fix the hypothesis that we are
         # testing. I.e. they fix some parameters during
@@ -474,7 +474,7 @@ class Experiment:
         extra_null_opt = {**test_parameters}
         for key in test_parameters.keys():
             extra_null_opt["fix_{0}".format(key)] = True # fix these parameters
-        LLR, LLR_obs = self.get_LLR_all(model,'gof',samples,extra_null_opt,signal=test_parameters)
+        LLR, LLR_obs = self.get_LLR_all(model,'gof',samples,extra_null_opt,signal=test_parameters,observed=observed)
         # p-values
         DOF = self.tests['gof'].DOF
         apval, epval = self.chi2_pval(LLR,LLR_obs,DOF)
@@ -603,7 +603,7 @@ class Experiment:
                    print("pars:",pars)
                    print("Lmax_exact[i]:", Lmax_exact[i])
                    print("X:",X)
-                   quit()
+                   raise ValueError("NaN logpdf detected!") 
             print()
         if not exact or test_mode:
             Lmax_fit, pmax_fit = model.find_MLE_parallel(opt,samples,method='minuit',

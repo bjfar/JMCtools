@@ -5,8 +5,10 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import scipy.stats as sps
+import scipy.interpolate as spi
 from JMCtools.experiment import Experiment
-from JMCtools.plotting import plot_teststat
+from JMCtools.plotting import plot_teststat, power_plot
+import JMCtools.common as c
 import pandas as pd
 import sys
 
@@ -93,12 +95,13 @@ class Analysis:
     def __init__(self,experiments,tag,run_diagnostics=False,make_plots=True,Nproc=3):
         self.experiments = experiments
         for e in self.experiments:
+            print(e)
             e.Nproc = Nproc # set number of processes to use for parallelisation of fits
         self.monster = Experiment.fromExperimentList(self.experiments)
         self.tag = tag # For naming output
   
         # Prepare object to store summary of results
-        self._results = Results(["experiment","test","a_pval","e_pval"])
+        self._results = Results(["experiment","test","a_pval","e_pval","DOF"])
         #print("Results:")
         #print(self.results)
 
@@ -173,7 +176,7 @@ class Analysis:
             monster_gofDOF += gofDOF
             LLR_obs_monster_gof += LLR_obs
 
-            test_results += [ [e.name, "gof", vflat(apval), vflat(epval)] ]
+            test_results += [ [e.name, "gof", vflat(apval), vflat(epval), gofDOF] ]
 
             # Plot! (only the first simulated 'observed' value, if more than one) 
             if self.make_plots:
@@ -194,7 +197,7 @@ class Analysis:
 
         # Compute joint test results
         m_apval, m_epval = Experiment.chi2_pval(LLR_monster_gof,LLR_obs_monster_gof,monster_gofDOF)
-        test_results += [ ["Monster", "gof", vflat(m_apval), vflat(m_epval)] ]
+        test_results += [ ["Monster", "gof", vflat(m_apval), vflat(m_epval), monster_gofDOF] ]
 
         # Save results
         self._results.add(test_results)
@@ -214,6 +217,176 @@ class Analysis:
                 ax.legend(loc=1, frameon=False, framealpha=0,prop={'size':10})
                 fig.savefig('auto_experiment_{0}_{1}.png'.format("Monster",self.tag))
                 plt.close(fig)
+
+    def gof_analysis_dual(self,test_parameters,sb_pseudodata=None,b_pseudodata=None):
+        """Perform goodness-of-fit tests on all experiments individually
+           and jointly. This version MCs the distribution of the test statistics
+           under both the background-only hypothesis AND the signal hypothesis.
+           This allows us to also compute the power of the test to discover a
+           particular signal. It also computes a meta-analysis combination
+           of the p-values obtained from every experiment (using Fisher's method)
+           and computes the power of that as well (this method may be more
+           powerful than the likelihood-based combination, depending on the relative 
+           numbers of degrees of freedom in the various likelihood components)."""
+
+        LLR_obs_monster_gof = 0
+        LLR_monster_gof = 0
+        LLR_monster_gof_s = 0 # LLR samples under signal pseudodata
+        monster_gofDOF = 0
+        test_results = []
+        if sb_pseudodata is None:
+            sb_pseudodata = genNone() # generates Nones when iterated
+        if b_pseudodata is None:
+            b_pseudodata = genNone() # generates Nones when iterated
+        # Storage for simulated p-values, for computing meta-analysis distribution and power
+        N = len(b_pseudodata) # Number of experiments 
+        M = b_pseudodata[0].shape[0] # Number of pseudodata trials
+        all_epvals_b = np.ones((N,M))
+        all_epvals_b_obs = [] # Observed p-value for each experiment
+        N = len(sb_pseudodata)
+        M = b_pseudodata[0].shape[0] 
+        all_epvals_sb = np.ones((N,M))
+        for j,(e,b_samples,s_samples) in enumerate(zip(self.experiments_for_test('gof'),b_pseudodata,sb_pseudodata)):
+            # Inspect experiment (debugging)
+            #print("Experiment {0} block structure: {1}".format(e.name, e.general_model.blocks))
+
+            # Do fit!
+            e_test_pars = test_parameters[e.name] # replace this with e.g. prediction from MSSM best fit
+            print("Performing 'gof' test for experiment {0}, using null hypothesis {1}".format(e.name,e_test_pars),file=sys.stderr)
+            model, LLR, LLR_obs, apval, epval, gofDOF = e.do_gof_test(e_test_pars,b_samples)
+            # Save LLR for combining (only works if experiments have no common parameters)
+            #print("e.name:{0}, LLR_obs:{1}, gofDOF: {2}".format(e.name,LLR_obs,gofDOF))
+            if LLR is not None:
+               LLR_monster_gof += LLR
+            else:
+               LLR_monster_gof = None
+            monster_gofDOF += gofDOF
+            LLR_obs_monster_gof += LLR_obs
+            a = np.argsort(LLR)
+            pvals = c.eCDF(LLR[a][::-1])[::-1] # do integral from right and then switch order back again
+            all_epvals_b_obs += [epval]
+
+            rCDF = spi.interp1d([-1e99]+list(LLR[a])+[1e99],[pvals[0]]+list(pvals)+[pvals[-1]]) # rather than 0/1, assign min/max observed pvalue to out-of-bounds
+            all_epvals_b[j] = rCDF(LLR) 
+
+            test_results += [ [e.name, "gof", vflat(apval), vflat(epval), gofDOF] ]
+
+            print("Performing 'gof' test for experiment {0} with signal pseudodata".format(e.name),file=sys.stderr)
+            model, s_LLR, s_LLR_obs, s_apval, s_epval, s_gofDOF = e.do_gof_test(e_test_pars,s_samples)
+            # Save LLR for combining (only works if experiments have no common parameters)
+            #print("e.name:{0}, LLR_obs:{1}, gofDOF: {2}".format(e.name,LLR_obs,gofDOF))
+            if s_LLR is not None:
+               LLR_monster_gof_s += s_LLR
+            else:
+               LLR_monster_gof_s = None
+
+            # Ahh crap, I see my mistake! We don't want to compute these p-values based on
+            # the *signal* simulated distribution! They are supposed to be p-values to
+            # reject the *background* hypothesis! So we need them computed as if the
+            # *background* hypothesis is true!
+            #a = np.argsort(s_LLR)
+            #all_epvals_sb[j,a] = 1 - c.eCDF(s_LLR[a])
+            
+            all_epvals_sb[j] = rCDF(s_LLR)
+ 
+            # Plot! (only the first simulated 'observed' value, if more than one) 
+            if self.make_plots:
+                if apval is None:
+                    print("p-value was None; test may be degenerate (e.g. if zero signal predicted), or just buggy. Skipping plot.",file=sys.stderr)
+                    quit()
+                else:
+                    fig= plt.figure(figsize=(6,4))
+                    ax = fig.add_subplot(111)
+                    # Range for test statistic axis. Draw as far as is equivalent to 5 sigma
+                    qran = [0, sps.chi2.ppf(sps.chi2.cdf(25,df=1),df=gofDOF)]  
+                    if s_LLR is not None:
+                        # Plot distribution under signal hypothesis
+                        plot_teststat(ax, s_LLR, None, log=True, 
+                            label='signal', c='r', obs=None, qran=qran)
+                    # Plot distribution under background-only hypothesis
+                    plot_teststat(ax, LLR, lambda q: sps.chi2.pdf(q, gofDOF), log=True, 
+                            label='background-only', c='g', obs=LLR_obs, pval=apval[0], qran=qran, 
+                            title=e.name+" (Nbins={0})".format(gofDOF),reverse_fill=True)
+
+                    ax.legend(loc=1, frameon=False, framealpha=0,prop={'size':10})
+                    fig.savefig('auto_experiment_{0}_{1}_GOFdual.png'.format(e.name,self.tag))
+                    plt.close(fig)
+
+                    if LLR is not None and s_LLR is not None:
+                         # Plot power of test to discover this signal hypothesis, vs CL level
+                         fig = plt.figure(figsize=(6,4))
+                         ax = fig.add_subplot(111)
+                         power_plot(ax, LLR, s_LLR)
+                         fig.savefig('auto_experiment_{0}_{1}_power.png'.format(e.name,self.tag))
+                         plt.close(fig)
+
+        # Compute joint test results
+        m_apval, m_epval = Experiment.chi2_pval(LLR_monster_gof,LLR_obs_monster_gof,monster_gofDOF)
+        test_results += [ ["Monster", "gof", vflat(m_apval), vflat(m_epval), monster_gofDOF] ]
+
+        # Compute Fisher's method combination of results
+        x = -2*np.sum(np.log(all_epvals_b),axis=0) # Sum over experiments
+        DOF_fisher = 2*len(all_epvals_b)
+        p_comb = 1 - sps.chi2.cdf(x,df=DOF_fisher)
+        #sig_comb = -sps.norm.ppf(p_comb)
+
+        # Observed:
+        x_obs = -2*np.sum(np.log(all_epvals_b_obs)) # Sum over experiments
+        p_obs = 1 - sps.chi2.cdf(x_obs,df=DOF_fisher)
+
+        # Under signal hypothesis:
+        x_s = -2*np.sum(np.log(all_epvals_sb),axis=0) # Sum over experiments
+        p_comb_s = 1 - sps.chi2.cdf(x_s,df=DOF_fisher)
+        #sig_comb_s = -sps.norm.ppf(p_comb_s)
+
+        # Save results
+        self._results.add(test_results)
+
+        # Plot! (only the first simulated 'observed' value, if more than one) 
+        if self.make_plots:
+            if m_apval is None:
+                print("p-value was None; test may be degenerate (e.g. if zero signal predicted), or just buggy. Skipping plot.")
+            else:
+                fig= plt.figure(figsize=(6,4))
+                ax = fig.add_subplot(111)
+                # Range for test statistic axis. Draw as far as is equivalent to 5 sigma
+                qran = [0, sps.chi2.ppf(sps.chi2.cdf(25,df=1),df=monster_gofDOF)]  
+                if s_LLR is not None:
+                    # Plot distribution under signal hypothesis
+                    plot_teststat(ax, LLR_monster_gof_s, None, log=True, 
+                        label='signal', c='r', obs=None, qran=qran)
+                plot_teststat(ax, LLR_monster_gof, lambda q: sps.chi2.pdf(q, monster_gofDOF), log=True, 
+                        label='background-only', c='g', obs=LLR_obs_monster_gof, pval=m_apval[0], qran=qran, 
+                         title="Monster (Nbins={0})".format(monster_gofDOF),reverse_fill=True)
+                ax.legend(loc=1, frameon=False, framealpha=0,prop={'size':10})
+                fig.savefig('auto_experiment_{0}_{1}.png'.format("Monster",self.tag))
+                plt.close(fig)
+                if LLR_monster_gof is not None and LLR_monster_gof_s is not None:
+                    # Plot distribution of meta-analysis test statistic
+                    fig= plt.figure(figsize=(6,4))
+                    ax = fig.add_subplot(111)
+                    # Range for test statistic axis. Draw as far as is equivalent to 5 sigma
+                    qran = [0, sps.chi2.ppf(sps.chi2.cdf(25,df=1),df=DOF_fisher)]  
+                    if s_LLR is not None:
+                        # Plot distribution under signal hypothesis
+                        plot_teststat(ax, x_s, None, log=True, 
+                            label='signal', c='r', obs=x_obs, qran=qran)
+                    plot_teststat(ax, x, lambda q: sps.chi2.pdf(q, DOF_fisher), log=True, 
+                            label='background-only', c='g', obs=x_obs, pval=p_obs, qran=qran, 
+                             title="Monster (Fisher's method; DOF={0})".format(DOF_fisher),reverse_fill=True)
+                    ax.legend(loc=1, frameon=False, framealpha=0,prop={'size':10})
+                    fig.savefig('auto_experiment_{0}_{1}_FisherComb.png'.format("Monster",self.tag))
+                    plt.close(fig)
+                     # Plot power of test to discover this signal hypothesis, vs CL level
+                    fig = plt.figure(figsize=(6,4))
+                    ax = fig.add_subplot(111)
+                    power_plot(ax, LLR_monster_gof, LLR_monster_gof_s, label="Likelihood",c='g')
+                    # Also plot power of meta-analysis combination to discover this signal hypothesis
+                    power_plot(ax, x, x_s, label="Meta-analysis",c='m')
+                    ax.legend(loc=1, frameon=False, framealpha=0,prop={'size':10})
+                    fig.savefig('auto_experiment_{0}_{1}_power.png'.format("Monster",self.tag))
+                    plt.close(fig)
+ 
 
     def musb_analysis(self,test_parameters,pseudodata=None,nullmu=0,observed=None):
         """Perform mu=0 VS mu=1 tests on all experiments individually
@@ -250,7 +423,7 @@ class Analysis:
             Eq_monster += Eq
             Varq_monster += Varq
 
-            test_results += [ [e.name, "musb_mu={0}".format(nullmu), vflat(musb_apval), vflat(musb_epval)] ]
+            test_results += [ [e.name, "musb_mu={0}".format(nullmu), vflat(musb_apval), vflat(musb_epval), 0] ]
 
             # Plot! (only the first simulated 'observed' value, if more than one)
             if self.make_plots:
@@ -270,7 +443,7 @@ class Analysis:
         m_apval, m_epval, m_Eq, m_Varq = Experiment.sb_pval(LLR_monster_mmusb,
                                                             LLR_obs_monster_mmusb,
                                                             LLRA_monster,nullmu=nullmu)
-        test_results += [ ["Monster", "musb_mu={0}".format(nullmu), vflat(m_apval), vflat(m_epval)] ]
+        test_results += [ ["Monster", "musb_mu={0}".format(nullmu), vflat(m_apval), vflat(m_epval), 0] ]
 
         # Plot Monster results
         if self.make_plots:
@@ -327,7 +500,7 @@ class Analysis:
             Eqsb_monster += Eqsb
             Varqsb_monster += Varqsb
 
-            test_results += [ [e.name, "musb_mu=1", vflat(musb_apvalsb), vflat(musb_epvalsb)] ]
+            test_results += [ [e.name, "musb_mu=1", vflat(musb_apvalsb), vflat(musb_epvalsb), 0] ]
 
             print("Performing 'musb' test (mu=0) for experiment {0}, using 'signal shape' {1}".format(e.name, e_test_pars),file=sys.stderr) 
             model, musb_LLRb, musb_LLR_obs, musb_apvalb, musb_epvalb, LLRAb, Eqb, Varqb = e.do_musb_test(e_test_pars,b_samples,nullmu=0)
@@ -342,15 +515,18 @@ class Analysis:
 
             if musb_apvalb is not None and len(musb_apvalb)==1: musb_apvalb=musb_apvalb[0]
             if musb_epvalb is not None and len(musb_epvalb)==1: musb_epvalb=musb_epvalb[0]
-            test_results += [ [e.name, "musb_mu=0", vflat(musb_apvalb), vflat(musb_epvalb)] ]
+            test_results += [ [e.name, "musb_mu=0", vflat(musb_apvalb), vflat(musb_epvalb), 0] ]
 
             # CL_s (Tevatron style)
             if musb_apvalsb is not None and musb_apvalb is not None:
                a_CLs = musb_apvalsb / (1 - musb_apvalb)
             else:
                a_CLs = None
-            e_CLs = musb_epvalsb / (1 - musb_epvalb)
-            test_results += [ [e.name, "musb_CLs", vflat(a_CLs), vflat(e_CLs)] ]
+            if musb_epvalsb is not None and musb_epvalb is not None:
+               e_CLs = musb_epvalsb / (1 - musb_epvalb)
+            else:
+               e_CLs = None
+            test_results += [ [e.name, "musb_CLs", vflat(a_CLs), vflat(e_CLs), 0] ]
 
             # Extract single value for pvalue (in case of multiple "observed" data realisations)
             # Just use first one. TODO: probably better to make a different kind of plot if multiple
@@ -384,25 +560,36 @@ class Analysis:
                 fig.savefig('auto_experiment_musb_dual_{0}_{1}_nonlog.png'.format(e.name,self.tag))
                 plt.close(fig)
 
+                # TODO: fix
+                #if musb_LLRb is not None and musb_LLRsb is not None:
+                #    # Plot power of test to discover this signal hypothesis, vs CL level
+                #    fig = plt.figure(figsize=(6,4))
+                #    ax = fig.add_subplot(111)
+                #    power_plot(ax, musb_LLRb, musb_LLRsb,left_tail=True)
+                #    fig.savefig('auto_experiment_musb_dual_{0}_{1}_power.png'.format(e.name,self.tag))
+                #    plt.close(fig)
 
         # Compute joint test results
         m_apvalsb, m_epvalsb, m_Eqsb, m_Varqsb = Experiment.sb_pval(LLRsb_monster_mmusb,
                                                             LLR_obs_monster_mmusb,
                                                             LLRAsb_monster,nullmu=1)
-        test_results += [ ["Monster", "musb_mu=1", vflat(m_apvalsb), vflat(m_epvalsb)] ]
+        test_results += [ ["Monster", "musb_mu=1", vflat(m_apvalsb), vflat(m_epvalsb), 0] ]
 
         m_apvalb, m_epvalb, m_Eqb, m_Varqb = Experiment.sb_pval(LLRb_monster_mmusb,
                                                             LLR_obs_monster_mmusb,
                                                             LLRAb_monster,nullmu=0)
-        test_results += [ ["Monster", "musb_mu=0", vflat(m_apvalb), vflat(m_epvalb)] ]
+        test_results += [ ["Monster", "musb_mu=0", vflat(m_apvalb), vflat(m_epvalb), 0] ]
 
         # CL_s (Tevatron style)
         if m_apvalsb is not None and m_apvalb is not None:
             a_CLs = m_apvalsb / (1 - m_apvalb)
         else:
             a_CLs = None
-        e_CLs = m_epvalsb / (1 - m_epvalb)
-        test_results += [ ["Monster", "musb_CLs", vflat(a_CLs), vflat(e_CLs)] ]
+        if m_epvalsb is not None and m_epvalb is not None:
+            e_CLs = m_epvalsb / (1 - m_epvalb)
+        else:
+            e_CLs = None
+        test_results += [ ["Monster", "musb_CLs", vflat(a_CLs), vflat(e_CLs), 0] ]
 
         apvalsb = np.atleast_1d(m_apvalsb)[0]
         apvalb = np.atleast_1d(m_apvalb)[0]

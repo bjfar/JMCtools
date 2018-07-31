@@ -136,7 +136,8 @@ def e_pval(samples,obs,reverse=False):
         s = np.sort(samples[np.isfinite(samples)])
     #print("s:",s)
     #print("obs:", obs)
-    CDF = spi.interp1d([-1e99]+list(s)+[1e99],[0]+list(eCDF(s))+[1])
+    ecdf = eCDF(s)
+    CDF = spi.interp1d([-1e99]+list(s)+[1e99],[ecdf[0]]+list(ecdf)+[ecdf[1]])
     #for si in s:
     #   print(si, CDF(si))
     #print("obs:",obs)
